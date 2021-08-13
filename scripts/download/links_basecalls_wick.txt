@@ -1,0 +1,10 @@
+https://bridges.monash.edu/ndownloader/files/14275016	Staphylococcus_aureus_CAS38_02
+https://bridges.monash.edu/ndownloader/files/14275007	Shigella_sonnei_2012-02037
+https://bridges.monash.edu/ndownloader/files/14274992	Serratia_marcescens_17-147-1671
+https://bridges.monash.edu/ndownloader/files/14274977	Klebsiella_pneumoniae_NUH29
+https://bridges.monash.edu/ndownloader/files/14274959	Klebsiella_pneumoniae_KSB2_1B
+https://bridges.monash.edu/ndownloader/files/14274956	Klebsiella_pneumoniae_INF042
+https://bridges.monash.edu/ndownloader/files/14274902	Haemophilus_haemolyticus_M1C132_1
+https://bridges.monash.edu/ndownloader/files/14274851	Acinetobacter_pittii_16-377-0801
+https://bridges.monash.edu/ndownloader/files/14275022	Stenotrophomonas_maltophilia_17_G_0092_Kos
+https://bridges.monash.edu/ndownloader/files/14274938	Klebsiella_pneumoniae_INF032
