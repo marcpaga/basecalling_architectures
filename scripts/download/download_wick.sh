@@ -15,32 +15,20 @@ do
 	name=$b
 	tar_name="${output_dir}/${name}.tar.gz"
 	dir_name="${output_dir}/${name}"
-	slo_dir="${output_dir}/${name}/sloika_hdf5s"
 
 	if [ -d $dir_name ]
 	then
-		if [ -d $slo_dir ]
-		then
-			echo "Deleting sloika files"
-        		rm -rv $slo_dir
-		else
-			echo  "Skipping: ${name}"
-		fi
+		echo  "Skipping: ${name}"
 	else
 		if [ -f $tar_name ]
 		then
 			echo "Unpacking data"
         	tar -xvzf $tar_name
-			echo "Deleting sloika files"
-            rm -rv $slo_dir
-			rm $tar_name
 		else
 			echo "Downloading: ${name}"
         	wget $link -O $tar_name
 			echo "Unpacking data"
             tar -xvzf $tar_name
-            echo "Deleting sloika files"
-            rm -rv $slo_dir
 		fi
 	fi
 done < $train_fast5_links
@@ -60,7 +48,6 @@ do
 		then
 			echo "Unpacking data"
         	tar -xvzf $tar_name
-			rm $tar_name
 		else
 			echo "Downloading: ${name}"
         	wget $link -O $tar_name
@@ -103,10 +90,7 @@ do
     
     if [ -f "${output_dir}/basecalls_test/${name}/guppy_v2.1.3-v2.2.3.fastq" ]
     then
-        mv "${output_dir}/basecalls_test/${name}/guppy_v2.1.3-v2.2.3.fastq" "${output_dir}/basecalls_test/${name}/basecalls.txt"
-        rm "${output_dir}/basecalls_test/${name}/"*".fastq"
-        rm "${output_dir}/basecalls_test/${name}/"*".fasta"
-        mv "${output_dir}/basecalls_test/${name}/basecalls.txt" "${output_dir}/basecalls_test/${name}/basecalls.fastq"
+        mv "${output_dir}/basecalls_test/${name}/guppy_v2.1.3-v2.2.3.fastq" "${output_dir}/basecalls_test/${name}/basecalls.fastq"
     fi
     
     if [ -f "${output_dir}/basecalls_test/${name}/01_guppy_v2.1.3.fastq" ]

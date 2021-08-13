@@ -5,13 +5,10 @@ echo "Untarring and joining fastq"
 find "${1}/FAB42828" -name '*.fastq.gz' -exec gzip -d '{}' \;
 find "${1}/FAB42828" -name '*.fastq' -exec mv {} "${1}/FAB42828/fastq" \;
 cat "${1}/FAB42828/fastq/"*".fastq" > "${1}/FAB42828/fastq/all_basecalls.fasta"
-rm "${1}/FAB42828/fastq/"*".fastq"
 mv "${1}/FAB42828/fastq/all_basecalls.fasta" "${1}/FAB42828/fastq/all_basecalls.fastq"
-rm -r "${1}/FAB42828/fastq/Norwich"
 
 echo "Spliting fast5"
 multi_to_single_fast5 -i "${1}/FAB42828/fast5" -s "${1}/FAB42828/fast5" --recursive -t $2
-rm -r "${1}/FAB42828/fast5/Norwich"
 
 echo "Merging fast5 and fastq"
 tombo preprocess annotate_raw_with_fastqs --fast5-basedir "${1}/FAB42828/fast5" --fastq-filenames "${1}/FAB42828/fastq/all_basecalls.fastq" --overwrite --processes $2
@@ -27,13 +24,10 @@ echo "Untarring and joining fastq"
 find "${1}/FAF04090" -name '*.fastq.gz' -exec gzip -d '{}' \;
 find "${1}/FAF04090" -name '*.fastq' -exec mv {} "${1}/FAF04090/fastq" \;
 cat "${1}/FAF04090/fastq/"*".fastq" > "${1}/FAF04090/fastq/all_basecalls.fasta"
-rm "${1}/FAF04090/fastq/"*".fastq"
 mv "${1}/FAF04090/fastq/all_basecalls.fasta" "${1}/FAF04090/fastq/all_basecalls.fastq"
-rm -r "${1}/FAF04090/fastq/Bham"
 
 echo "Spliting fast5"
 multi_to_single_fast5 -i "${1}/FAF04090/fast5" -s "${1}/FAF04090/fast5" --recursive -t $2
-rm -r "${1}/FAF04090/fast5/Bham"
 
 echo "Merging fast5 and fastq"
 tombo preprocess annotate_raw_with_fastqs --fast5-basedir "${1}/FAF04090/fast5" --fastq-filenames "${1}/FAF04090/fastq/all_basecalls.fastq" --overwrite --processes $2
@@ -50,13 +44,10 @@ echo "Untarring and joining fastq"
 find "${1}/FAF09968" -name '*.fastq.gz' -exec gzip -d '{}' \;
 find "${1}/FAF09968" -name '*.fastq' -exec mv {} "${1}/FAF09968/fastq" \;
 cat "${1}/FAF09968/fastq/"*".fastq" > "${1}/FAF09968/fastq/all_basecalls.fasta"
-rm "${1}/FAF09968/fastq/"*".fastq"
 mv "${1}/FAF09968/fastq/all_basecalls.fasta" "${1}/FAF09968/fastq/all_basecalls.fastq"
-rm -r "${1}/FAF04090/fastq/Bham"
 
 echo "Spliting fast5"
 multi_to_single_fast5 -i "${1}/FAF09968/fast5" -s "${1}/FAF09968/fast5" --recursive -t $2
-rm -r "${1}/FAF09968/fast5/Bham"
 
 echo "Merging fast5 and fastq"
 tombo preprocess annotate_raw_with_fastqs --fast5-basedir "${1}/FAF09968/fast5" --fastq-filenames "${1}/FAF09968/fastq/all_basecalls.fastq" --overwrite --processes $2
