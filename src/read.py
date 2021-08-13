@@ -155,9 +155,8 @@ def read_fast5(fast5_file, read_ids = None):
     return read_reads
 
 def read_fasta(fasta_file):
-    
-    if not fasta_file.endswith('.fasta'):
-        raise ValueError('File should be fasta')
+    """Read a fasta file
+    """
         
     fasta_dict = dict()
     with open(fasta_file, 'r') as handle:
@@ -167,3 +166,19 @@ def read_fasta(fasta_file):
             else:
                 fasta_dict[k] = line.strip('\n')
     return fasta_dict
+
+def read_fna(file):
+    """Read a fna file, like fasta but sequences are split by \n 
+    """
+    d = dict()
+    with open(file, 'r') as f:
+        for line in f:
+            if line.startswith('>'):
+                k = line.strip('\n')
+                d[k[1:]] = list()
+            else:
+                d[k[1:]].append(line.strip('\n'))
+                
+    for k, v in d.items():
+        d[k] = "".join(v)
+    return d
