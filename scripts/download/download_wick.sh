@@ -115,3 +115,26 @@ do
     fi
     
 done < $basecalls_links
+
+
+while read a b;
+do
+    link=$a
+	name=$b
+    tar_name="${output_dir}/genomes_test/${name}.fna.gz"
+    
+    if [ -f "${output_dir}/genomes_test/${name}.fna" ]
+    then
+        echo "Skipping: ${name}"
+        continue
+    fi
+    
+    if [ -f $tar_name ] 
+    then
+        gzip -d $tar_name
+    else
+        wget $link -O $tar_name
+        gzip -d $tar_name
+    fi
+    
+done < $references_links

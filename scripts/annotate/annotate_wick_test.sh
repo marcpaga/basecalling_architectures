@@ -10,7 +10,7 @@ do
     
     ref="${wick_dir}/genomes_test/${spe}.fna"
     out="${wick_dir}/${spe}/segmentation_report.txt"
-    fastq_file="${wick_dir}/basecalls_test/${spe}/01_guppy_v2.1.3.fastq"
+    fastq_file="${wick_dir}/basecalls_test/${spe}/basecalls.fastq"
     
     if [ -f $out ]; then
         echo 'Skipping'
