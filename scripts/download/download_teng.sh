@@ -19,5 +19,3 @@ wget $lambda_ref_link -O "${output_dir}/lambda_genome.fasta" --no-check-certific
 
 mkdir "${output_dir}/Lambda_phage"
 tar -xvzf "${output_dir}/lambda_fast5.tar.gz" -C "${output_dir}/Lambda_phage"
-
-

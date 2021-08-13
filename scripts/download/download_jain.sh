@@ -21,6 +21,3 @@ wget $human_link2_fastq -O "${output_dir}/FAF09968_fastq.tar"
 
 wget $human_link3_fast5 -O "${output_dir}/FAB42828_fast5.tar"
 wget $human_link3_fastq -O "${output_dir}/FAB42828_fastq.tar"
-
-
-
