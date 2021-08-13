@@ -1,3 +1,9 @@
+"""
+Deletes existing segmentation tables on Wick et al. data,
+resquiggles the data using the reference sequences and reports
+the results in txt file.
+"""
+
 import os
 import sys
 import glob
@@ -10,6 +16,8 @@ from tombo.tombo_helper import TomboError
 from tombo._default_parameters import  DNA_SAMP_TYPE, RNA_SAMP_TYPE, MIN_EVENT_TO_SEQ_RATIO, MAX_RAW_CPTS
 from collections import namedtuple
 import h5py
+import mappy
+import copy
 
 sys.path.append('../../src')
 
@@ -121,13 +129,19 @@ def write_table(file_path, segmentation_arr, read_start_rel_to_raw):
         corr_events = analysis_grp.create_dataset('RawGenomeCorrected_000/BaseCalled_template/Events', data=segmentation_arr, compression="gzip")
         corr_events.attrs['read_start_rel_to_raw'] = read_start_rel_to_raw
 
-def segment_read(file_path, reference, q):
+def segment_read(file_path, reference, alignment, q):
     """Wrapper to segment a read
     """
     
     read_data = read.read_fast5(file_path)
     read_id = list(read_data.keys())[0]
     read_data = read_data[read_id]
+        
+    st = alignment['r_st']
+    nd = alignment['r_en']
+    strand = '+' if alignment['strand'] == 1 else '-'
+    chrom = alignment['ctg']
+    
     
     norm_signal = normalize_signal_wrapper(read_data.raw, 
                                            offset = read_data.offset, 
@@ -138,7 +152,7 @@ def segment_read(file_path, reference, q):
     try:
         seg_res = segment(reference, read_id, read_data.raw, norm_signal)
     except:
-        s = file_path + '\t' + read_id + '\t' + 'Failed_to_segment'
+        s = file_path + '\t' + read_id + '\t' + 'Failed_to_segment' + '\t' + str(st) + '\t' + str(nd) + '\t' + str(strand) + '\t' + str(chrom)
         q.put(s)
         return file_path, read_id, 'Failed to segment'
     
@@ -168,11 +182,11 @@ def segment_read(file_path, reference, q):
     try:
         write_table(file_path, segmentation_arr, r)
     except:
-        s = file_path + '\t' + read_id + '\t' + 'Failed_to_write'
+        s = file_path + '\t' + read_id + '\t' + 'Failed_to_write' + '\t' + str(st) + '\t' + str(nd) + '\t' + str(strand) + '\t' + str(chrom)
         q.put(s)
         return file_path, read_id, 'Failed to write'
 
-    s = file_path + '\t' + read_id + '\t' + 'Success'
+    s = file_path + '\t' + read_id + '\t' + 'Success' + '\t' + str(st) + '\t' + str(nd) + '\t' + str(strand) + '\t' + str(chrom)
     q.put(s)
     return file_path, read_id, 'Success'
 
@@ -188,11 +202,12 @@ def listener(q, output_file):
             f.write(str(m) + '\n')
             f.flush()
             
-def main(fast5_path, reference_file, output_file, n_cores, verbose = True):
+def main(fast5_path, reference_file, genome_file, output_file, n_cores, verbose = True):
     """Process all the reads with multiprocessing
     Args:
         fast5_path (str): path to fast5 files, searched recursively
-        reference_file (str): fasta file with references
+        reference_file (str): fasta file with read references
+        genome_file (str): fasta file with genome reference
         output_file (str): output txt file to write outcome of resquiggle
         n_cores (int): number of parallel processes
         verbose (bool): output a progress bar
@@ -214,14 +229,22 @@ def main(fast5_path, reference_file, output_file, n_cores, verbose = True):
         with open(output_file, 'r') as f:
             for line in f:
                 processed_reads.append(line.split('\t')[0])
+    else:
+        with open(output_file, 'w') as f:
+            s = 'file'+'\t'+'read_id'+'\t'+'result'+'\t'+'align_st'+'\t'+'align_nd'+'\t'+'align_strand'+'\t'+'align_chrom'+'\n'
+            f.write(s)
     processed_reads = set(processed_reads)
     
     if len(processed_reads) > 0:
         print('Reads already processed: ' + str(len(processed_reads)))
     
+    print('Reading genome file: ' + str(genome_file))
+    aligner =  mappy.Aligner(genome_file, preset=str('map-ont'), best_n=1)
+    
+    print('Mapping')
     jobs = list()
     file_list = glob.glob(fast5_path + '/**/*.fast5', recursive=True)
-    for file_path in file_list:
+    for file_path in tqdm(file_list, disable = not verbose):
         if file_path in processed_reads:
             continue
         
@@ -229,11 +252,20 @@ def main(fast5_path, reference_file, output_file, n_cores, verbose = True):
         try:
             ref = references[file_name]
         except KeyError:
-            s = file_path + '\t' + 'unknown' + '\t' + 'No_reference'
+            s = file_path + '\t' + 'unknown' + '\t' + 'No_reference' + '\t' + 'NaN' + '\t' + 'NaN' + '\t' + 'NaN' + '\t' + 'NaN'
             q.put(s)
             continue
-        
-        job = pool.apply_async(segment_read, (file_path, ref, q))
+
+        try:
+            alignment = list(aligner.map(str(ref)))[0]
+        except IndexError:
+            s = file_path + '\t' + 'unknown' + '\t' + 'Failed_to_align' + '\t' + 'NaN' + '\t' + 'NaN' + '\t' + 'NaN' + '\t' + 'NaN'
+        alignment_results = {"r_st":alignment.r_st, 
+                             "r_en":alignment.r_en,
+                             "strand":alignment.strand,
+                             "ctg":alignment.ctg}
+
+        job = pool.apply_async(segment_read, (file_path, ref, alignment_results, q))
         jobs.append(job)
         
     print('Reads to be processed: ' + str(len(jobs)))
@@ -257,6 +289,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--fast5-path", type=str, help='Path to fast5 files, it is searched recursively')
     parser.add_argument("--reference-file", type=str, help='Fasta file that contains references')
+    parser.add_argument("--genome-file", type=str, help='Fasta file with genome sequence')
     parser.add_argument("--output-file", type=str, help='Text file that contains information on the result of the segmentation')
     parser.add_argument("--n-cores", type=int, help='Number of processes')
     parser.add_argument("--verbose", action='store_true', help='Output a progress bar')
@@ -265,6 +298,7 @@ if __name__ == "__main__":
     
     main(fast5_path = args.fast5_path, 
          reference_file = args.reference_file, 
+         genome_file = args.genome_file,
          output_file = args.output_file, 
          n_cores = args.n_cores, 
          verbose = args.verbose)
