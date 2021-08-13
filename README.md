@@ -4,5 +4,7 @@ Nanopore basecalling guidelines for model benchmarking.
 
 # Todo
 
-- [] Data download and organize bash script
-- [] Data annotate Wick datasets
+- [x] Data download scripts
+- [x] Data annotate scripts
+- [ ] Data organize script
+- [ ] Environment description for above steps
