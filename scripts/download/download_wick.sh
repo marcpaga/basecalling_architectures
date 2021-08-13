@@ -8,6 +8,7 @@ train_fast5_links="${SCRIPT_DIR}/links_train_wick.txt"
 test_fast5_links="${SCRIPT_DIR}/links_test_wick.txt"
 references_links="${SCRIPT_DIR}/links_references_wick.txt"
 basecalls_links="${SCRIPT_DIR}/links_basecalls_wick.txt"
+genomes_links="${SCRIPT_DIR}/links_general_references.txt"
 
 while read a b;
 do 
@@ -122,3 +123,31 @@ do
     fi
     
 done < $references_links
+
+if [ ! -d "${output_dir}/genomes" ]
+then
+    mkdir "${output_dir}/genomes"
+fi
+
+while read a b;
+do
+    link=$a
+	name=$b
+    tar_name="${output_dir}/genomes/${name}.fna.gz"
+    
+    if [ -f "${output_dir}/genomes_test/${name}.fna" ]
+    then
+        echo "Skipping: ${name}"
+        continue
+    fi
+    
+    if [ -f $tar_name ] 
+    then
+        gzip -d $tar_name
+    else
+        wget $link -O $tar_name
+        gzip -d $tar_name
+    fi
+    
+done < $genomes_links
+
