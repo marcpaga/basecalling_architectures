@@ -19,7 +19,7 @@ import sys
 sys.path.append('../../src')
 import seeds
 from read import read_fna
-from constants import ALL_SPECIES
+from constants import ALL_SPECIES, HUMAN_CHROMOSOMES, HUMAN_CHROMOSOMES_EVEN, HUMAN_CHROMOSOMES_ODD, HUMAN_CHROMOSOMES_OTHER
 import numpy as np
 import pandas as pd
 from copy import deepcopy
@@ -85,6 +85,71 @@ def split_spe(spe, dirs, num_train_reads, num_test_reads, genome_split, spe_seed
         
     return train_split, test_split
 
+def split_human(dirs, num_train_reads, num_test_reads, spe_seed, odd_train, output_dir = None):
+    """Split train and test reads for a the human data
+    
+    Odd chromosomes are used for training and even for testing, plus the X, Y and Mito.
+    Odd and even can be interchanged in the seeds
+    
+    Args:
+        dirs (list): list of dirs that containt that species data
+        num_train_reads (int): number of reads for training
+        num_test_reads (int): number of reads for testing
+        spe_seed (int): seed for random read choosing
+        output_dir (str): dir where to write the list of reads for train and test
+    """
+    
+    # get all the data from all the datasets, filter to successfully resquiggled reads
+    df_list = list()
+    for d in dirs:
+        df = pd.read_csv(os.path.join(d, 'segmentation_report.txt'), sep = '\t', header = None)
+        df = df[df[2] == 'Success']
+        df_list.append(df)
+    df = pd.concat(df_list)
+    df = df.sort_values(by = 6)
+    
+    # filter to reads that map to the 'canonical' chromosomes
+    df = df[np.isin(df[6], HUMAN_CHROMOSOMES)]
+    
+    # divide train and test chromosomes
+    if odd_train:
+        train_chr = HUMAN_CHROMOSOMES_ODD
+        test_chr = HUMAN_CHROMOSOMES_EVEN + HUMAN_CHROMOSOMES_OTHER
+    else:
+        train_chr = HUMAN_CHROMOSOMES_EVEN
+        test_chr = HUMAN_CHROMOSOMES_ODD + HUMAN_CHROMOSOMES_OTHER
+    
+    # divide files between train and test
+    train_split = df[np.isin(df[6], train_chr)][0].tolist()
+    train_split = sorted(train_split)
+    random.seed(spe_seed)
+    random.shuffle(train_split)
+    
+    test_split = df[np.isin(df[6], test_chr)][0].tolist()
+    test_split = sorted(test_split)
+    random.seed(spe_seed)
+    random.shuffle(test_split)
+    
+    # select reads
+    if len(train_split) > num_train_reads:
+        train_split = train_split[:num_train_reads]
+        
+    if len(test_split) > num_test_reads:
+        test_split = test_split[:num_test_reads]
+        
+    if output_dir:
+        with open(os.path.join(output_dir, 'human_task_train_reads.txt'), 'w') as f:
+            for r in train_split:
+                f.write(r + '\n')
+            
+        with open(os.path.join(output_dir, 'human_task_test_reads.txt'), 'w') as f:
+            for r in test_split:
+                f.write(r + '\n')
+
+    
+    return train_split, test_split
+    
+
 def global_split(main_dir, num_train_reads, num_test_reads, genome_split, output_dir):
     """Split data for all the species without genomic overlap
     
@@ -121,12 +186,12 @@ def global_split(main_dir, num_train_reads, num_test_reads, genome_split, output
     spe_seed = seeds.GLOBAL_SEED
     for spe, dirs in multi_dirs.items():
         if spe == 'Homo_sapiens':
-            continue
-            
-        train, test = split_spe(spe, dirs, train_reads_per_spe, test_reads_per_spe, genome_split, spe_seed)
+            train, test = split_human(dirs, train_reads_per_spe, test_reads_per_spe, spe_seed, seeds.GLOBAL_TRAIN_ODD, None)
+        else:
+            train, test = split_spe(spe, dirs, train_reads_per_spe, test_reads_per_spe, genome_split, spe_seed)
+        
         train_reads += train
         test_reads += test
-        
         spe_seed += 1
         
     with open(os.path.join(output_dir, 'global_task_train_reads.txt'), 'w') as f:
@@ -404,7 +469,12 @@ def main(main_dir, output_dir, bindist_matrix, cluster_order, max_species, min_s
     inter_reads_split(main_dir, training_species, testing_species, inter_traintrain, inter_traintest, inter_test, output_dir)
     
     # human species
-    
+    alldirs = glob.glob(os.path.join(main_dir, '*/*/'), recursive = True)
+    dirs = list()
+    for dd in alldirs:
+        if re.search('Homo_sapiens', dd):
+            dirs.append(dd)
+    train, test = split_human(dirs, human_train, human_test, seeds.HUMAN_SEED, seeds.HUMAN_TRAIN_ODD, output_dir)
     
     # global
     global_split(main_dir, global_train, global_test, genome_split, output_dir)
@@ -423,8 +493,8 @@ if __name__ == "__main__":
     parser.add_argument("--inter-test", type=int, help='Number of reads for testing in the inter-species task from the test species set', default = 20000)
     parser.add_argument("--global-train", type=int, help='Number of reads for training for the global task', default = 100000)
     parser.add_argument("--global-test", type=int, help='Number of reads for testing for the global task', default = 50000)
-    parser.add_argument("--human-train", type=int, help='Number of reads for training for the human task', default = 100000)
-    parser.add_argument("--human-test", type=int, help='Number of reads for testing for the human task', default = 50000)
+    parser.add_argument("--human-train", type=int, help='Number of reads for training for the human task', default = 50000)
+    parser.add_argument("--human-test", type=int, help='Number of reads for testing for the human task', default = 25000)
     parser.add_argument("--genome-split", type=float, help='Fraction of the genome that should be used for training', default = 0.5)
     args = parser.parse_args()
     

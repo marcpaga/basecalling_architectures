@@ -11,10 +11,14 @@ INTER_INNER_SEED = 1
 # read selection
 INTER_READ_SEED = 1
 
-## Chromosome regions for global
+### GLOBAL TASK
 
+# reads selection
 GLOBAL_SEED = 1
 
-## Chromosomes for human
+# odd chromosomes for training in human
+GLOBAL_TRAIN_ODD = 1
 
-HUMAN_CHROM_SEED = 1
+### HUMAN TASK
+HUMAN_SEED = 1
+HUMAN_TRAIN_ODD = 1
