@@ -129,7 +129,7 @@ def write_table(file_path, segmentation_arr, read_start_rel_to_raw):
         corr_events = analysis_grp.create_dataset('RawGenomeCorrected_000/BaseCalled_template/Events', data=segmentation_arr, compression="gzip")
         corr_events.attrs['read_start_rel_to_raw'] = read_start_rel_to_raw
 
-def segment_read(file_path, reference, alignment, q):
+def segment_read(file_path, reference, alignment, q, p):
     """Wrapper to segment a read
     """
     
@@ -188,10 +188,14 @@ def segment_read(file_path, reference, alignment, q):
 
     s = file_path + '\t' + read_id + '\t' + 'Success' + '\t' + str(st) + '\t' + str(nd) + '\t' + str(strand) + '\t' + str(chrom)
     q.put(s)
+    
+    s = '>' + str(read_id) + '\n' + str("".join(read_data.segmentation['base'].tolist()))
+    p.put(s)
+    
     return file_path, read_id, 'Success'
 
-def listener(q, output_file):
-    """Listens to outputs on the queue and writes to report file
+def listener_writer(q, output_file):
+    """Listens to outputs on the queue and writes to a file
     """
     
     with open(output_file, 'a') as f:
@@ -215,9 +219,12 @@ def main(fast5_path, reference_file, genome_file, output_file, n_cores, verbose 
     
     # queue for writing to a report
     manager = mp.Manager()
-    q = manager.Queue() 
+    q = manager.Queue()  # report queue
+    p = manager.Queue()  # fasta queue
     pool = mp.Pool(n_cores) # pool for multiprocessing
-    watcher = pool.apply_async(listener, (q, output_file))
+    watcher = pool.apply_async(listener_writer, (q, output_file))
+    fasta_file = os.path.join("/".join(output_file.split('/')[:-1]), 'read_references_benchmark.fasta')
+    watcher_fasta = pool.apply_async(listener_writer, (p, fasta_file))
     
     print('Reading reference')
     references = read.read_fasta(reference_file)
@@ -265,7 +272,7 @@ def main(fast5_path, reference_file, genome_file, output_file, n_cores, verbose 
                              "strand":alignment.strand,
                              "ctg":alignment.ctg}
 
-        job = pool.apply_async(segment_read, (file_path, ref, alignment_results, q))
+        job = pool.apply_async(segment_read, (file_path, ref, alignment_results, q, p))
         jobs.append(job)
         
     print('Reads to be processed: ' + str(len(jobs)))
@@ -274,6 +281,7 @@ def main(fast5_path, reference_file, genome_file, output_file, n_cores, verbose 
         job.get()
         
     q.put('kill')
+    p.put('kill')
     pool.close()
     pool.join()
     

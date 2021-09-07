@@ -57,35 +57,22 @@ def report_read(file_path, q, p):
     q.put(s)
     
     file_name = file_path.split('/')[-1].split('.')[0]
-    s = '>' + str(file_name) + '\n' + str("".join(read_data.segmentation['base'].tolist()))
+    s = '>' + str(read_id) + '\n' + str("".join(read_data.segmentation['base'].tolist()))
     p.put(s)
     return file_path, read_id, 'Success'
     
-def listener_report(q, output_file):
-    """Listens to outputs on the queue and writes to report file
+def listener_writer(queue, output_file):
+    """Listens to outputs on the queue and writes to a file
     """
-    
-    ref_file = os.path.join("/".join(output_file.split('/')[:-1]), 'read_references.fasta')
     
     with open(output_file, 'a') as f:
         while True:
-            m = q.get()
+            m = queue.get()
             if m == 'kill':
                 break
             f.write(str(m) + '\n')
             f.flush()
             
-def listener_fasta(p, output_file):
-    """Listens to outputs on the queue and writes to fasta file
-    """
-    
-    with open(output_file, 'a') as f:
-        while True:
-            m = p.get()
-            if m == 'kill':
-                break
-            f.write(str(m) + '\n')
-            f.flush()
             
 def main(fast5_path, output_file, n_cores, mode, verbose = True):
     """Process all the reads with multiprocessing
@@ -104,9 +91,9 @@ def main(fast5_path, output_file, n_cores, mode, verbose = True):
         q = manager.Queue()  # report queue
         p = manager.Queue()  # fasta queue
         pool = mp.Pool(n_cores) # pool for multiprocessing
-        watcher_report = pool.apply_async(listener_report, (q, output_file))
-        fasta_file = os.path.join("/".join(output_file.split('/')[:-1]), 'read_references.fasta')
-        watcher_fasta = pool.apply_async(listener_fasta, (p, fasta_file))
+        watcher_report = pool.apply_async(listener_writer, (q, output_file))
+        fasta_file = os.path.join("/".join(output_file.split('/')[:-1]), 'read_references_benchmark.fasta')
+        watcher_fasta = pool.apply_async(listener_writer, (p, fasta_file))
 
         processed_reads = list()
         if os.path.exists(output_file):
