@@ -80,3 +80,5 @@ HUMAN_CHROMOSOMES_ODD = ['chr1',
                          'chr21']
 
 HUMAN_CHROMOSOMES_OTHER = ['chrX', 'chrY', 'chrM']
+
+BASES = ['A', 'C', 'G', 'T']
