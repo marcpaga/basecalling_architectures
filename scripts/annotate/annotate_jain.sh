@@ -1,11 +1,13 @@
 #!/bin/bash
 
+# Usage
+# bash annotate_jain.sh $JAIN_DIR $N_CORES
+
 echo "Processing FAB42828"
 echo "Untarring and joining fastq"
 find "${1}/FAB42828" -name '*.fastq.gz' -exec gzip -d '{}' \;
 find "${1}/FAB42828" -name '*.fastq' -exec mv {} "${1}/FAB42828/fastq" \;
-cat "${1}/FAB42828/fastq/"*".fastq" > "${1}/FAB42828/fastq/all_basecalls.fasta"
-mv "${1}/FAB42828/fastq/all_basecalls.fasta" "${1}/FAB42828/fastq/all_basecalls.fastq"
+cat "${1}/FAB42828/fastq/"*".fastq" > "${1}/FAB42828/fastq/all_basecalls.fastq"
 
 echo "Spliting fast5"
 multi_to_single_fast5 -i "${1}/FAB42828/fast5" -s "${1}/FAB42828/fast5" --recursive -t $2
