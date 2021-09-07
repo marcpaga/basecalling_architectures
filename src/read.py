@@ -167,6 +167,21 @@ def read_fasta(fasta_file):
                 fasta_dict[k] = line.strip('\n')
     return fasta_dict
 
+def read_fastq(fastq_file):
+    """Read a fastq file
+    """
+    
+    fastq_dict = dict()
+    with open(fastq_file, 'r') as handle:
+        for line in handle:
+            if line.startswith('@'):
+                k = line[1:].split(' ')[0].strip('\n')
+                fastq_dict[k] = list()
+            else:
+                fastq_dict[k].append(line.strip('\n'))
+                
+    return fastq_dict
+                
 def read_fna(file):
     """Read a fna file, like fasta but sequences are split by \n 
     """
