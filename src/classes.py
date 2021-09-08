@@ -1,19 +1,28 @@
 from torch import nn
+from torch.utils.data import Dataset
+from abc import abstractmethod
 
 class BaseModel(nn.Module):
+    """ Abstract class for basecaller models
+    """
     
-    def __init__(self, device, optimizers, schedulers, criterions, clipping_value = 2, use_sam = False):
+    def __init__(self, device, dataloader, 
+                 optimizers, schedulers, criterions, clipping_value = 2, use_sam = False):
         super(BaseModel, self).__init__()
         
         self.device = device
         
+        # data
+        self.dataloader = dataloader
+
+        # optimization
         self.optimizer = optimizer
         self.schedulers = schedulers
         self.criterions = criterions
-        
         self.clipping_value = clipping_value
         self.use_sam = use_sam
-        
+    
+    @abstractmethod    
     def train_step(self, batch):
         """Predicts a single batch of data
         Args:
@@ -22,6 +31,7 @@ class BaseModel(nn.Module):
         raise NotImplementedError()
         return predictions, losses
     
+    @abstractmethod
     def validate_step(self, batch):
         """Predicts a single batch of data
         Args:
@@ -29,15 +39,15 @@ class BaseModel(nn.Module):
         """
         raise NotImplementedError()
         return predictions, losses
-        
-    def predict(self, batch):
-        """Predicts a single batch of data
-        Args:
-            batch (dict): dict filled with tensors of input only
+    
+    @abstractmethod    
+    def predict(self):
+        """Abstract method that takes care of the whole prediction and 
+        assembly of a set of reads.
         """
         raise NotImplementedError()
-        return predictions
-        
+    
+    @abstractmethod    
     def calculate_loss(self, y, p):
         """Calculates the losses for each criterion
         
@@ -53,7 +63,8 @@ class BaseModel(nn.Module):
         
         raise NotImplementedError()
         return loss, losses
-        
+    
+    @abstractmethod    
     def optimize(self, y, p):
         """Optimizes the model by calculating the loss and doing backpropagation
         
@@ -79,3 +90,30 @@ class BaseModel(nn.Module):
             optimizer.step()
             
         return losses
+
+class BaseDataloader(Dataset):
+
+    def __init__(self, decoding_dict, encoding_dict):
+        super(BaseDataloader, self).__init__()
+
+        self.decoding_dict = decoding_dict
+        self.encoding_dict = encoding_dict
+
+    @abstractmethod
+    def process(self):
+        """Abstract method that processes the data into a ready
+        for training format
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def encode(self):
+       """Abstract method that encodes the labels
+       """
+       raise NotImplementedError()
+
+    @abstractmethod
+    def decode(self):
+       """Abstract method that decodes the labels
+       """
+
