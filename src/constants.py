@@ -1,4 +1,4 @@
-"""
+"""Contains constants used 
 """
 
 ALL_SPECIES = [ 'Stenotrophomonas_pavanii',
@@ -82,3 +82,9 @@ HUMAN_CHROMOSOMES_ODD = ['chr1',
 HUMAN_CHROMOSOMES_OTHER = ['chrX', 'chrY', 'chrM']
 
 BASES = ['A', 'C', 'G', 'T']
+
+# parasail alignment configuration
+ALIGNMENT_GAP_OPEN_PENALTY = 8
+ALIGNMENT_GAP_EXTEND_PENALTY = 4
+ALIGNMENT_MATCH_SCORE = 2
+ALIGNMENT_MISSMATCH_SCORE = 1
