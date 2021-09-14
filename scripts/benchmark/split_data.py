@@ -12,6 +12,12 @@ lack of reads in a species is NOT compensated in the other species.
 For human, the same principle is applied but within chromosomes.
 
 Splits are random based on pre-defined seeds for reproducibility
+
+Usage:
+python split_data.py --path /hpc/compgen/projects/nanoxog/raw/benchmark \
+                     --bindist-matrix /hpc/compgen/projects/nanoxog/babe/analysis/mpages/clustering/nohomolambda/distance_matrix_binarized_3_k9.txt \
+                     --cluster-order /hpc/compgen/projects/nanoxog/babe/analysis/mpages/clustering/nohomolambda/clustering_species_order_k9.txt \
+                     --output-dir /hpc/compgen/users/mpages/babe/doc 
 """
 
 import os
@@ -26,6 +32,7 @@ from copy import deepcopy
 import glob
 import re
 import random
+from tqdm import tqdm
 
 import argparse
 
