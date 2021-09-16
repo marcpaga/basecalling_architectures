@@ -124,7 +124,7 @@ class BaseModel(nn.Module):
                      'optimizer_state': self.optimizer.state_dict()}
         for k, v in self.schedulers:
             save_dict[k + '_state'] = v.state_dict()
-        torch.save(save_dict, save_file)
+        torch.save(save_dict, checkpoint_file)
     
     def load(self, checkpoint_file):
         """TODO"""
