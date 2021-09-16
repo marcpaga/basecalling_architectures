@@ -1,4 +1,5 @@
 import os
+import torch
 from torch import nn
 from torch.utils.data import Dataset, Sampler
 from abc import abstractmethod
@@ -9,14 +10,15 @@ class BaseModel(nn.Module):
     """ Abstract class for basecaller models
     """
     
-    def __init__(self, device, dataloader, 
-                 optimizers, schedulers, criterions, clipping_value = 2, use_sam = False):
+    def __init__(self, device, dataloader_train, dataloader_validation, 
+                 optimizer = None, schedulers = None, criterions = None, clipping_value = 2, use_sam = False):
         super(BaseModel, self).__init__()
         
         self.device = device
         
         # data
-        self.dataloader = dataloader
+        self.dataloader_train = dataloader_train
+        self.dataloader_validation = dataloader_validation
 
         # optimization
         self.optimizer = optimizer
@@ -25,9 +27,8 @@ class BaseModel(nn.Module):
         self.clipping_value = clipping_value
         self.use_sam = use_sam
         
-        self.to(self.device())
         self.init_weights()
-    
+        
     @abstractmethod    
     def train_step(self, batch):
         """Predicts a single batch of data
@@ -48,10 +49,20 @@ class BaseModel(nn.Module):
     
     @abstractmethod    
     def predict(self):
-        """Abstract method that takes care of the whole prediction and 
-        assembly of a set of reads.
+        """Abstract method that is used to call the predict approach for
+        evaluation metrics during training and evaluation. 
+        For example, it can be as simple as argmax for class prediction.
         """
         raise NotImplementedError()
+        
+    def evaluate(self):
+        """Abstract method that takes care of how to calculate any
+        evaluation metric.
+        
+        Evaluation metrics is a dictionary with lists
+        """
+        raise NotImplementedError()
+        return evaluation_metrics
     
     @abstractmethod    
     def calculate_loss(self, y, p):
@@ -84,10 +95,14 @@ class BaseModel(nn.Module):
             loss, losses = self.calculate_loss(y, p)
             self.optimizer.second_step(zero_grad=True)
         else:
-            optimizer.zero_grad()
+            self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.parameters(), self.clipping_value)
-            optimizer.step()
+            self.optimizer.step()
+            
+        for scheduler in self.schedulers.values():
+            if scheduler:
+                scheduler.step()
             
         return None
     
@@ -101,8 +116,19 @@ class BaseModel(nn.Module):
         """Count trainable parameters in model
         """
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
-
-
+    
+    def save(self, checkpoint_file):
+        """Save the model state
+        """
+        save_dict = {'model_state': self.state_dict(), 
+                     'optimizer_state': self.optimizer.state_dict()}
+        for k, v in self.schedulers:
+            save_dict[k + '_state'] = v.state_dict()
+        torch.save(save_dict, save_file)
+    
+    def load(self, checkpoint_file):
+        """TODO"""
+        raise NotImplementedError()
 
 class BaseNanoporeDataset(Dataset):
     """Base dataset class that contains Nanopore data
