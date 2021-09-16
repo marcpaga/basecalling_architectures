@@ -10,6 +10,7 @@ sys.path.append('../../src')
 from classes import BaseModel
 from layers import BonitoLSTM
 from constants import CTC_BLANK
+from utils import decode_batch_greedy_ctc, alignment_accuracy
 
 import torch
 from torch import nn
@@ -45,33 +46,76 @@ class BonitoCTCModel(BaseModel):
         """
         
         self.train()
-        x = train_batch['x'].to(self.device)
+        x = batch['x'].to(self.device)
         x = x.unsqueeze(1) # add channels dimension
-        
         p = self.forward(x) # forward through the network
+        y = batch['y'].to(self.device)
         
         loss, losses = self.calculate_loss(y, p)
         self.optimize(loss)
         
-        return losses, predictions
+        return losses, p
         
-    @abstractmethod
-    def validate_step(self, batch):
+    
+    def validation_step(self, batch):
         """Predicts a single batch of data
         Args:
             batch (dict): dict filled with tensors of input and output
         """
-        raise NotImplementedError()
-        return losses, predictions
+        
+        self.eval()
+        with torch.no_grad():
+            x = batch['x'].to(self.device)
+            x = x.unsqueeze(1) # add channels dimension
+            p = self.forward(x) # forward through the network
+            y = batch['y'].to(self.device)
+            
+            loss, losses = self.calculate_loss(y, p)
+            
+        return losses, p
     
-    @abstractmethod    
-    def predict(self):
-        """Abstract method that takes care of the whole prediction and 
-        assembly of a set of reads.
+    
+    def predict(self, p):
+        """Predict approach for evaluation metrics during training and evaluation. 
+        """
+        return self.predict_greedy(p)
+        
+    
+    def predict_greedy(self, p):
+        """Predict the bases in a greedy approach
+        Args:
+            p (tensor): with classes as last dimension
+        """
+        decoded_predictions =  decode_batch_greedy_ctc(y = p.argmax(-1).permute(1, 0).detach(), 
+                                                       decode_dict = self.dataloader_train.dataset.decoding_dict, 
+                                                       blank_label = CTC_BLANK)
+        return decoded_predictions
+    
+    def predict_beam_search(self):
+        """Predict the bases using beam search
         """
         raise NotImplementedError()
-
-    
+        
+    def evaluate(self, batch, predictions):
+        """Evaluate the predictions by calculating the accuracy
+        
+        Args:
+            batch (dict): dict with tensor with [batch, len] in key 'y'
+            predictions (list): list of predicted sequences as strings
+        """
+        y = batch['y']
+        accs = list()
+        for i, sample in enumerate(y):
+            y_str = ''
+            for s in sample:
+                if s == CTC_BLANK:
+                    break
+                y_str += self.dataloader_train.dataset.decoding_dict[s.item()]
+                
+            accs.append(alignment_accuracy(y_str, predictions[i]))
+            
+        return {'accuracy': accs}
+            
     def calculate_loss(self, y, p):
         """Calculates the losses for each criterion
         
@@ -85,11 +129,11 @@ class BonitoCTCModel(BaseModel):
                 global_loss
         """
         
-        y_len = torch.sum(y != 0, axis = 1, device = self.device)
-        p_len = torch.full((p.shape[1], ), p.shape[0], device = self.device)
+        y_len = torch.sum(y != CTC_BLANK, axis = 1).to(self.device)
+        p_len = torch.full((p.shape[1], ), p.shape[0]).to(self.device)
         
-        loss = ctc_loss(p, y, p_len, y_len)
-        losses = {'ctc': loss.item()}
+        loss = self.criterion(p, y, p_len, y_len)
+        losses = {'loss.global': loss.item(), 'loss.ctc': loss.item()}
         
         return loss, losses
         
