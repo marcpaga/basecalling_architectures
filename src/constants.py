@@ -1,6 +1,8 @@
 """Contains constants used 
 """
 
+import parasail
+
 ALL_SPECIES = [ 'Stenotrophomonas_pavanii',
                 'Klebsiella_pneumoniae',
                 'Salmonella_enterica',
@@ -91,3 +93,7 @@ ALIGNMENT_MISSMATCH_SCORE = 1
 
 # networks
 CTC_BLANK = 0
+
+# evalution
+ALIGN_FUNCTION = parasail.nw_trace_striped_32
+MATRIX = parasail.matrix_create("".join(BASES), ALIGNMENT_MATCH_SCORE, -ALIGNMENT_MISSMATCH_SCORE)
