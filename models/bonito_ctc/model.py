@@ -6,7 +6,8 @@ https://github.com/nanoporetech/bonito
 """
 
 import sys
-sys.path.append('../../src')
+import os
+sys.path.append('/hpc/compgen/users/mpages/babe/src')
 from classes import BaseModel
 from layers import BonitoLSTM
 from constants import CTC_BLANK
@@ -74,6 +75,18 @@ class BonitoCTCModel(BaseModel):
             
         return losses, p
     
+    def predict_step(self, batch):
+        """
+        Args:
+            batch (dict) dict fill with tensor just for prediction
+        """
+        self.eval()
+        with torch.no_grad():
+            x = batch['x'].to(self.device)
+            x = x.unsqueeze(1)
+            p = self.forward(x)
+            
+        return p
     
     def predict(self, p):
         """Predict approach for evaluation metrics during training and evaluation. 
@@ -86,7 +99,10 @@ class BonitoCTCModel(BaseModel):
         Args:
             p (tensor): with classes as last dimension
         """
-        decoded_predictions =  decode_batch_greedy_ctc(y = p.argmax(-1).permute(1, 0).detach(), 
+        p = p.detach()
+        p = p.argmax(-1).permute(1, 0)
+        p = p.cpu().numpy()
+        decoded_predictions =  decode_batch_greedy_ctc(y = p, 
                                                        decode_dict = self.dataloader_train.dataset.decoding_dict, 
                                                        blank_label = CTC_BLANK)
         return decoded_predictions
@@ -103,18 +119,18 @@ class BonitoCTCModel(BaseModel):
             batch (dict): dict with tensor with [batch, len] in key 'y'
             predictions (list): list of predicted sequences as strings
         """
-        y = batch['y']
+        y = batch['y'].cpu().numpy()
         accs = list()
         for i, sample in enumerate(y):
             y_str = ''
             for s in sample:
                 if s == CTC_BLANK:
                     break
-                y_str += self.dataloader_train.dataset.decoding_dict[s.item()]
+                y_str += self.dataloader_train.dataset.decoding_dict[s]
                 
             accs.append(alignment_accuracy(y_str, predictions[i]))
             
-        return {'accuracy': accs}
+        return {'metric.accuracy': accs}
             
     def calculate_loss(self, y, p):
         """Calculates the losses for each criterion
