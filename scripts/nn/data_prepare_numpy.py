@@ -4,7 +4,7 @@ ready to be used for dataloading for training a model.
 
 import os
 import sys
-sys.path.append('../src')
+sys.path.append('../../src')
 from read import read_fast5
 from normalization import normalize_signal_wrapper
 from seeds import DATA_PREPARE_READ_SHUFFLE
@@ -139,12 +139,10 @@ def segment_reads_and_write(read_files, output_file, window_length, overlap, min
     X = np.vstack(x_list)
     Y = np.vstack(y_list)
     
-    output_file = output_file + str(X.shape[0]) + '.npz'
-    
     np.savez(output_file, x = X, y = Y)
 
 def main(fast5_dir, fast5_files_list, output_dir, total_files, 
-         window_length, window_overlap, min_bases, max_bases, chunk_size, 
+         window_length, window_overlap, min_bases, max_bases, 
          n_cores = 1, verbose = True):
     """Processes a set of fast5 reads into chunks for deep learning training
     
@@ -185,7 +183,7 @@ def main(fast5_dir, fast5_files_list, output_dir, total_files,
     
     jobs = list()
     for i, read_set in enumerate(reads_splits):
-        output_file = os.path.join(output_dir, 'data_' + str(i) + '_')
+        output_file = os.path.join(output_dir, 'data_' + str(i) + '.npz')
         jobs.append(pool.apply_async(segment_reads_and_write, (read_set.tolist(), output_file,
                                                                window_length, window_overlap, 
                                                                min_bases, max_bases)))
@@ -210,7 +208,6 @@ if __name__ == "__main__":
     parser.add_argument("--window-slide", type=int, help='Number of datapoints of overlap between sequential segments', default = 0)
     parser.add_argument("--min-bases", type=int, help='Minimum number of bases for a segment to be kept', default = 10)
     parser.add_argument("--max-bases", type=int, help='Maximum number of bases for a segment to be kept', default = inf)
-    parser.add_argument("--chunk-size", type=int, help='Sample chunk size for writing the hdf5', default = 64)
     parser.add_argument("--n-cores", type=int, help='Number of parallel processes, do not use more processes than total files as it will be wasted resources', default = 1)
     parser.add_argument("--verbose", action='store_true', help='Print a progress bar')
     args = parser.parse_args()
@@ -223,7 +220,6 @@ if __name__ == "__main__":
          window_overlap = args.window_slide, 
          min_bases = args.min_bases, 
          max_bases = args.max_bases, 
-         chunk_size = args.chunk_size, 
          n_cores = args.n_cores, 
          verbose = args.verbose)
 
