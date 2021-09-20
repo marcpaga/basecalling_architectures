@@ -2,6 +2,8 @@
 """
 import re
 from constants import ALIGN_FUNCTION, MATRIX, ALIGNMENT_GAP_OPEN_PENALTY, ALIGNMENT_GAP_EXTEND_PENALTY
+import zipfile
+import numpy as np
 
 def stich_segments():
     """Stiches different predicted segments together
@@ -23,9 +25,14 @@ def decode_batch_greedy_ctc(y, decode_dict, blank_label = 0):
         seq = ''
         prev_s = blank_label
         for s in y[i]:
-            if s != blank_label and s != prev_s:
-                seq += decode_dict[int(s)]
+            s = int(s)
+            if s == blank_label:
+                prev_s = blank_label
+            elif s != prev_s:
                 prev_s = s
+                seq += decode_dict[s]
+            elif s == prev_s:
+                continue
         decoded_predictions.append(seq)
     return decoded_predictions
 
@@ -88,7 +95,7 @@ def read_metadata(file_name):
         
     Returns:
         (list): with as many items as arrays in the file, each item in the list
-        is filename (within the zip), shape, pickled (I think?), dtype
+        is filename (within the zip), shape, fortran order, dtype
     """
     zip_file=zipfile.ZipFile(file_name, mode='r')
     arr_names=zip_file.namelist()
