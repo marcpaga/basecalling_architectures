@@ -5,6 +5,11 @@ from torch.utils.data import Dataset, Sampler
 from abc import abstractmethod
 import numpy as np
 import random
+from utils import read_metadata
+from read import read_fast5
+from normalization import normalize_signal_from_read_data
+from tqdm import tqdm
+import warnings
 
 class BaseModel(nn.Module):
     """ Abstract class for basecaller models
@@ -40,12 +45,20 @@ class BaseModel(nn.Module):
     
     @abstractmethod
     def validate_step(self, batch):
-        """Predicts a single batch of data
+        """Predicts a single batch of data for valudation
         Args:
             batch (dict): dict filled with tensors of input and output
         """
         raise NotImplementedError()
         return losses, predictions
+    
+    def predict_step(self, batch):
+        """Predicts a single batch of data
+        Args:
+            batch (dict): dict filled with tensors of input only
+        """
+        raise NotImplementedError()
+        return predictions
     
     @abstractmethod    
     def predict(self):
@@ -122,14 +135,20 @@ class BaseModel(nn.Module):
         """
         save_dict = {'model_state': self.state_dict(), 
                      'optimizer_state': self.optimizer.state_dict()}
-        for k, v in self.schedulers:
+        for k, v in self.schedulers.items():
             save_dict[k + '_state'] = v.state_dict()
         torch.save(save_dict, checkpoint_file)
     
     def load(self, checkpoint_file):
         """TODO"""
         raise NotImplementedError()
-
+        
+    @abstractmethod
+    def load_default_configuration(self, default_all = False):
+        """Method to load default model configuration
+        """
+        raise NotImplementedError()
+    
 class BaseNanoporeDataset(Dataset):
     """Base dataset class that contains Nanopore data
     
@@ -222,7 +241,8 @@ class BaseNanoporeDataset(Dataset):
         """
         l = list()
         for f in self.files_list:
-            l.append(int(f.split('_')[-1].split('.')[0]))
+            metadata = read_metadata(os.path.join(self.data_dir, f))
+            l.append(metadata[0][1][0]) # [array_num, shape, first elem shape]
         return l
     
     def _split_train_validation(self):
@@ -333,3 +353,188 @@ class IdxSampler(Sampler):
 
     def __len__(self):
         return len(self.idxs)
+        
+class BaseFast5Dataset(Dataset):
+    """Base dataset class that iterates over fast5 files for basecalling
+    
+    Args:
+        data_dir (str): dir with fast5files
+    """
+
+    def __init__(self, data_dir, recursive = True):
+        super(BaseFast5Dataset, self).__init__()
+    
+        self.data_dir = data_dir
+        self.recursive = recursive
+        self.data_files = self.find_all_fast5_files()
+
+    def __len__(self):
+        return len(self.data_files)
+    
+    def __getitem__(self, idx):
+        read_data = read_fast5(self.data_files[idx])
+        return read_fast5
+        
+    def find_all_fast5_files(self):
+        """Find all fast5 files in a dir recursively
+        """
+        # find all the files that we have to process
+        files_list = list()
+        for path in Path(self.data_dir).rglob('*.fast5'):
+            files_list.append(str(path))
+        return files_list
+        
+class BaseBasecallDataset(Dataset):
+    """A simple dataset for basecalling purposes
+    """
+    def __init__(self, x):
+        self.x = x
+    def __len__(self):
+        return self.x.shape[0]
+    def __getitem__(self, idx):
+        return {'x': self.x[idx, :]}
+
+class BaseBasecaller:
+    """A base Basecaller class that is used to basecall complete reads
+    """
+    
+    def __init__(self, model, chunk_size, overlap, batch_size):
+        
+        self.model = model
+        self.chunk_size = chunk_size
+        self.overlap = overlap
+        self.batch_size = batch_size
+        
+    def basecall(self, files_list, output_file, greedy = True, verbose = False):
+        
+        # iterate read by read
+        with tqdm() as pbar:
+            for fast5_file in files_list:
+                read_data = read.fast5_file(fast5_file)
+                
+                for read_id, read_values in read_data.items():
+                    
+                    signal = self.process_read(read_values)
+                    # chunk
+                    chunks = self.chunk(signal, self.chunk_size, self.overlap)
+
+                    # make a dataset
+                    dataloader = DataLoader(BaseBasecallDataset(chunks), self.batch_size, shuffle = False, drop_last = False)
+                    
+                    preds = list()
+                    for batch in dataloader:
+                        # forward through model
+                        p = self.model.predict(batch)
+                        preds.append(p)
+                    p = torch.cat(preds, dim = 1)
+                    p = p.permute(1, 0, 2)
+                    
+                    try:
+                        stride = model.stride
+                    except AttributeError:
+                        stride = int(self.chunk_size // p.shape[1])
+                        warnings.warn(('Model has no attribute stride, ideally it would have that, ' + 
+                                       'the stride has been deduced based on the output size of the ' + 
+                                       'predictions as being: ' + str(stride)))
+                    # stich
+                    long_p = stitch_by_stride(p, self.chunk_size, self.overlap, len(signal), stride)
+                    long_p = long_p.unsqueeze(1)
+                    # decode
+        
+                    if greedy:
+                        pred_str = model.predict_greedy(long_p)[0]
+                    else:
+                        pred_str = model.predict_beam_search(long_p)[0]
+                    
+                    with open(output_file, 'a') as f:
+                        f.write('>' + str(read_id) + '\n')
+                        f.write(pred_str + '\n')
+                        
+                    # write to file
+                    pbar.update(1)
+        return None
+    
+    def process_read(self, read_data):
+        """
+        Process the read data as adequate
+        
+        Args:
+            read_data (ReadData): object with all the read data values
+            
+        Returns:
+            A torch tensor with the processed signal
+        """
+        signal = normalize_signal_from_read_data(read_data)
+        signal = torch.from_numpy(signal)
+        
+        return signal
+    
+    
+    @abstractmethod
+    def stich(self, chunks, *args, **kwargs):
+        """
+        Stitch chunks together with a given overlap
+        
+        Args:
+            chunks (tensor): predictions with shape [samples, length, classes]
+        """
+        raise NotImplementedError()
+        
+    def chunk(self, signal, chunksize, overlap):
+        """
+        Convert a read into overlapping chunks before calling
+        
+        Since it is unlikely that the length of the signal is perfectly divisible 
+        by the chunksize, the first chunk starts from 0, but the second chunk will
+        start from the datapoint that makes it to have a perfect ending.
+        
+        Args:
+            signal (tensor): 1D tensor with the raw signal
+            chunksize (int): size of each chunk
+            overlap (int): datapoints overlap between chunks
+            
+        Copied from https://github.com/nanoporetech/bonito
+        """
+        T = signal.shape[0] # 
+        if chunksize == 0:
+            chunks = signal[None, :]
+        elif T < chunksize:
+            chunks = torch.nn.functional.pad(signal, (chunksize - T, 0))[None, :]
+        else:
+            stub = (T - overlap) % (chunksize - overlap)
+            chunks = signal[stub:].unfold(0, chunksize, chunksize - overlap)
+            if stub > 0:
+                chunks = torch.cat([signal[None, :chunksize], chunks], dim=0)
+        return chunks.unsqueeze(1)
+
+
+    def stitch_by_stride(self, chunks, chunksize, overlap, length, stride, reverse=False):
+        """
+        Stitch chunks together with a given overlap
+        
+        Args:
+            chunks (tensor): predictions with shape [samples, length, classes]
+            chunk_size (int): initial size of the chunks
+            overlap (int): initial overlap of the chunks
+            length (int): original length of the signal
+            stride (int): stride of the model
+            reverse (bool): if the chunks are in reverse order
+            
+        Copied from https://github.com/nanoporetech/bonito
+        """
+        if chunks.shape[0] == 1: return chunks.squeeze(0)
+
+        semi_overlap = overlap // 2
+        start, end = semi_overlap // stride, (chunksize - semi_overlap) // stride
+        stub = (length - overlap) % (chunksize - overlap)
+        first_chunk_end = (stub + semi_overlap) // stride if (stub > 0) else end
+
+        if reverse:
+            chunks = list(chunks)
+            return torch.cat([
+                chunks[-1][:-start], *(x[-end:-start] for x in reversed(chunks[1:-1])), chunks[0][-first_chunk_end:]
+            ])
+        else:
+            return torch.cat([
+                chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
+            ])
