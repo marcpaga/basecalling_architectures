@@ -1,2 +1,2 @@
-# Bonito-CRF model
+# Skeleton model
 
