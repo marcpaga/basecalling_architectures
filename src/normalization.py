@@ -122,3 +122,12 @@ def normalize_signal_wrapper(signal, offset, range, digitisation, method = 'nois
     
     normalized_signal = normalize_signal(scaled_signal, med = med, mad = mad)
     return normalized_signal
+
+def normalize_signal_from_read_data(read_data):
+    """Normalize the nanopore raw signal
+    
+    Args:
+        read_data (ReadData)
+    """
+    
+    return normalize_signal_wrapper(read_data.raw, offset = read_data.offset, range = read_data.range, digitisation = read_data.digitisation)
