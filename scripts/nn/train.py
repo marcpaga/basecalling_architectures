@@ -66,6 +66,7 @@ if __name__ == '__main__':
             os.mkdir(checkpoints_dir)
     copyfile(args.config_file, os.path.join(output_dir, 'config.py'))
     copyfile(os.path.join(config_file_dir, 'model.py'), os.path.join(output_dir, 'model.py'))
+    copyfile(os.path.join(config_file_dir, 'basecaller.py'), os.path.join(output_dir, 'basecaller.py'))
     
     # keep track of losses and metrics to take the average
     train_results = dict()
@@ -94,7 +95,7 @@ if __name__ == '__main__':
                 
                 # calculate accuracy for the training only here since doing for every batch
                 # is expensive and slow...
-                predictions_decoded = model.predict(predictions)
+                predictions_decoded = model.decode(predictions, greedy = True)
                 metrics = model.evaluate(train_batch, predictions_decoded)
                 
                 # log the train results
@@ -113,7 +114,7 @@ if __name__ == '__main__':
                                 
                 # calculate and log the validation results
                 losses, predictions = model.validation_step(validation_batch)
-                predictions_decoded = model.predict(predictions)
+                predictions_decoded = model.decode(predictions, greedy = True)
                 metrics = model.evaluate(validation_batch, predictions_decoded)
                 
                 for k, v in losses.items():
@@ -146,3 +147,6 @@ if __name__ == '__main__':
                     
                 # write results to console
                 print(log_df)
+                
+    
+    model.save(os.path.join(checkpoints_dir, 'checkpoint_' + str(total_num_steps) + '.pt'))
