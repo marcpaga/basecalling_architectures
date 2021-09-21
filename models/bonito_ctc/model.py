@@ -88,13 +88,22 @@ class BonitoCTCModel(BaseModel):
             
         return p
     
-    def predict(self, p):
-        """Predict approach for evaluation metrics during training and evaluation. 
+    def decode(self, p, greedy = True):
+        """Decode the predictions
+         
+        Args:
+            p (tensor): tensor with the predictions with shape [timesteps, batch, classes]
+            greedy (bool): whether to decode using a greedy approach
+        Returns:
+            A (list) with the decoded strings
         """
-        return self.predict_greedy(p)
+        if greedy:
+            return self.decode_greedy(p)
+        else:
+            raise NotImplementedError('Beam search not yet implemented')
         
     
-    def predict_greedy(self, p):
+    def decode_greedy(self, p):
         """Predict the bases in a greedy approach
         Args:
             p (tensor): with classes as last dimension
@@ -107,7 +116,7 @@ class BonitoCTCModel(BaseModel):
                                                        blank_label = CTC_BLANK)
         return decoded_predictions
     
-    def predict_beam_search(self):
+    def decode_beam_search(self):
         """Predict the bases using beam search
         """
         raise NotImplementedError()

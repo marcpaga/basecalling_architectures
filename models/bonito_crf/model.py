@@ -80,13 +80,27 @@ class BonitoCRFModel(BaseModel):
         return p
     
     
-    def predict(self, p):
-        """Predict approach for evaluation metrics during training and evaluation. 
+    def decode(self, p, greedy = True):
+        """Decode the predictions
+        
+        Args:
+            p (tensor): tensor with the predictions with shape [timesteps, batch, classes]
+            greedy (bool): whether to decode using a greedy approach
+        Returns:
+            A (list) with the decoded strings
         """
-        return self.predict_greedy(p)
+        if greedy:
+            return self.decode_greedy(p)
+        else:
+            raise NotImplementedError('Beam search not yet implemented')
     
-    def predict_greedy(self, y):
+    def decode_greedy(self, y):
         """Predict the sequences using a greedy approach
+        
+        Args:
+            y (tensor): tensor with scores in shape [timesteps, batch, classes]
+        Returns:
+            A (list) with the decoded strings
         """
         scores = self.seqdist.posteriors(y.to(torch.float32)) + 1e-8
         tracebacks = self.seqdist.viterbi(scores.log()).to(torch.int16).T
