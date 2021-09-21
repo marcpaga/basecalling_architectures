@@ -1,7 +1,7 @@
 import os
 import torch
 from torch import nn
-from torch.utils.data import Dataset, Sampler
+from torch.utils.data import Dataset, Sampler, DataLoader
 from abc import abstractmethod
 import numpy as np
 import random
@@ -33,6 +33,7 @@ class BaseModel(nn.Module):
         self.use_sam = use_sam
         
         self.init_weights()
+        self.stride = self.get_stride()
         
     @abstractmethod    
     def train_step(self, batch):
@@ -61,10 +62,16 @@ class BaseModel(nn.Module):
         return predictions
     
     @abstractmethod    
-    def predict(self):
-        """Abstract method that is used to call the predict approach for
+    def decode(self, p, greedy = True):
+        """Abstract method that is used to call the decoding approach for
         evaluation metrics during training and evaluation. 
         For example, it can be as simple as argmax for class prediction.
+        
+        Args:
+            p (tensor): tensor with the predictions with shape [timesteps, batch, classes]
+            greedy (bool): whether to decode using a greedy approach
+        Returns:
+            A (list) with the decoded strings
         """
         raise NotImplementedError()
         
@@ -142,6 +149,11 @@ class BaseModel(nn.Module):
     def load(self, checkpoint_file):
         """TODO"""
         raise NotImplementedError()
+        
+    def get_stride(self):
+        """Gives the total stride of the model
+        """
+        return None
         
     @abstractmethod
     def load_default_configuration(self, default_all = False):
@@ -399,59 +411,84 @@ class BaseBasecaller:
     """
     
     def __init__(self, model, chunk_size, overlap, batch_size):
+        """
+        Args:
+            model (nn.Module): a model that has the following methods:
+                predict, decode
+            chunk_size (int): length of the chunks that a read will be divided into
+            overlap (int): amount of overlap between consecutive chunks
+            batch_size (int): batch size to forward through the network
+        """
         
         self.model = model
         self.chunk_size = chunk_size
         self.overlap = overlap
         self.batch_size = batch_size
         
-    def basecall(self, files_list, output_file, greedy = True, verbose = False):
+    def basecall(self, files_list, output_dir, reads_per_file = 0, greedy = True, silent = False):
+        """
+        """
+        
+        read_counter = 0
+        file_gen = self.output_file_gen()
+        output_file = next(file_gen)
+        
+        if not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
         
         # iterate read by read
-        with tqdm() as pbar:
+        with tqdm(disable = silent) as pbar:
             for fast5_file in files_list:
-                read_data = read.fast5_file(fast5_file)
+                read_data = read_fast5(fast5_file)
                 
                 for read_id, read_values in read_data.items():
                     
                     signal = self.process_read(read_values)
                     # chunk
                     chunks = self.chunk(signal, self.chunk_size, self.overlap)
-
+                    
                     # make a dataset
                     dataloader = DataLoader(BaseBasecallDataset(chunks), self.batch_size, shuffle = False, drop_last = False)
                     
                     preds = list()
                     for batch in dataloader:
                         # forward through model
-                        p = self.model.predict(batch)
+                        
+                        p = self.model.predict_step(batch)
                         preds.append(p)
                     p = torch.cat(preds, dim = 1)
                     p = p.permute(1, 0, 2)
                     
-                    try:
-                        stride = model.stride
-                    except AttributeError:
+                    stride = self.model.stride
+                    if not stride:
                         stride = int(self.chunk_size // p.shape[1])
                         warnings.warn(('Model has no attribute stride, ideally it would have that, ' + 
                                        'the stride has been deduced based on the output size of the ' + 
                                        'predictions as being: ' + str(stride)))
+
                     # stich
-                    long_p = stitch_by_stride(p, self.chunk_size, self.overlap, len(signal), stride)
+                    long_p = self.stich(p, self.chunk_size, self.overlap, len(signal), stride) # TODO: this is not compatible with new stich implementations
                     long_p = long_p.unsqueeze(1)
-                    # decode
-        
-                    if greedy:
-                        pred_str = model.predict_greedy(long_p)[0]
-                    else:
-                        pred_str = model.predict_beam_search(long_p)[0]
                     
-                    with open(output_file, 'a') as f:
+                    # decode
+                    pred_str = self.model.decode(long_p, greedy = greedy)[0]
+                    
+                    with open(os.path.join(output_dir, output_file), 'a') as f:
                         f.write('>' + str(read_id) + '\n')
                         f.write(pred_str + '\n')
                         
                     # write to file
                     pbar.update(1)
+                    read_counter += 1
+                    
+                    # if we have a limit of reads per file
+                    if reads_per_file > 0:
+                        # if we have reached the limit
+                        if read_counter == reads_per_file :
+                            # get the next file name
+                            output_file = next(file_gen)
+                            # reset the counter
+                            read_counter = 0
         return None
     
     def process_read(self, read_data):
@@ -505,12 +542,21 @@ class BaseBasecaller:
             chunks = signal[stub:].unfold(0, chunksize, chunksize - overlap)
             if stub > 0:
                 chunks = torch.cat([signal[None, :chunksize], chunks], dim=0)
-        return chunks.unsqueeze(1)
+        return chunks
 
 
     def stitch_by_stride(self, chunks, chunksize, overlap, length, stride, reverse=False):
         """
         Stitch chunks together with a given overlap
+        
+        This works by calculating what the overlap should be between two outputed
+        chunks from the network based on the stride and overlap of the inital chunks.
+        The overlap section is divided in half and the outer parts of the overlap
+        are discarded and the chunks are concatenated. There is no alignment.
+        
+        Chunk1: AAAAAAAAAAAAAABBBBBCCCCC
+        Chunk2:               DDDDDEEEEEFFFFFFFFFFFFFF
+        Result: AAAAAAAAAAAAAABBBBBEEEEEFFFFFFFFFFFFFF
         
         Args:
             chunks (tensor): predictions with shape [samples, length, classes]
@@ -538,3 +584,11 @@ class BaseBasecaller:
             return torch.cat([
                 chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
             ])
+        
+    def output_file_gen(self):
+        """An infinite name generator
+        """
+        i = -1
+        while True:
+            i += 1
+            yield 'basecalls_' + str(i) + '.fasta'
