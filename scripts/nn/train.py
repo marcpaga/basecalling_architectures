@@ -109,7 +109,7 @@ if __name__ == '__main__':
                 try:
                     validation_batch = next(validation_iterator)
                 except StopIteration:
-                    validation_iterator = iter(validation_loader)
+                    validation_iterator = iter(loader_validation)
                     validation_batch = next(validation_iterator)
                                 
                 # calculate and log the validation results
@@ -138,11 +138,11 @@ if __name__ == '__main__':
                     log_df['checkpoint'] = 'no'
                 
                 # write to log
-                if not os.path.isfile(os.path.join(output_dir, 'model.log')):
-                    log_df.to_csv(os.path.join(output_dir, 'model.log'), 
+                if not os.path.isfile(os.path.join(output_dir, 'train.log')):
+                    log_df.to_csv(os.path.join(output_dir, 'train.log'), 
                                   header=True, index=False)
                 else: # else it exists so append without writing the header
-                    log_df.to_csv(os.path.join(output_dir, 'model.log'), 
+                    log_df.to_csv(os.path.join(output_dir, 'train.log'), 
                                   mode='a', header=False, index=False)
                     
                 # write results to console
