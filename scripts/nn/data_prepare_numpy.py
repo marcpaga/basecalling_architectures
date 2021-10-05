@@ -173,6 +173,9 @@ def main(fast5_dir, fast5_files_list, output_dir, total_files,
     else:
         raise ValueError('Either --fast5-dir or --fast5-list must be given')
         
+    if verbose:
+        print('Found ' + str(len(files_list)) + ' to process')
+        
     pool = mp.Pool(processes = n_cores) # add two to ensure that there is a process for the queue writer
     
     # divide files over total number of files
