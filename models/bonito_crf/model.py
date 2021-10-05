@@ -2,10 +2,9 @@
 """
 
 import sys
-import os
 sys.path.append('/hpc/compgen/users/mpages/babe/src')
 from classes import BaseModel
-from utils import alignment_accuracy
+from evaluation import alignment_accuracy
 from constants import CTC_BLANK
 import layers
 

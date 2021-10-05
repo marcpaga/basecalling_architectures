@@ -1,14 +1,12 @@
 """Contains general utilities
 """
-import re
-from constants import ALIGN_FUNCTION, MATRIX, ALIGNMENT_GAP_OPEN_PENALTY, ALIGNMENT_GAP_EXTEND_PENALTY
 import zipfile
 import numpy as np
 
 def stich_segments():
     """Stiches different predicted segments together
     """
-    raise NotImplemetedError('TODO')
+    raise NotImplementedError('TODO')
     
 def decode_batch_greedy_ctc(y, decode_dict, blank_label = 0):
     """Decodes a batch of CTC predictions in a greedy manner
@@ -35,57 +33,6 @@ def decode_batch_greedy_ctc(y, decode_dict, blank_label = 0):
                 continue
         decoded_predictions.append(seq)
     return decoded_predictions
-
-def elongate_cigar(cigar):
-    cigar_counts = re.split('H|X|=|I|D|N|S|P|M', cigar)
-    cigar_strs = re.split('[0-9]', cigar)
-    
-    cigar_counts = [c for c in cigar_counts if c != '']
-    cigar_strs = [c for c in cigar_strs if c != '']
-    
-    assert len(cigar_strs) == len(cigar_counts)
-    
-    longcigar = ''
-    for c, s in zip(cigar_counts, cigar_strs):
-        longcigar += s*int(c)
-    return longcigar, cigar_counts, cigar_strs
-
-def alignment_accuracy(y, p, alignment_function = ALIGN_FUNCTION, matrix = MATRIX, 
-                       open_penalty = ALIGNMENT_GAP_OPEN_PENALTY, extend_penalty = ALIGNMENT_GAP_EXTEND_PENALTY):
-    """Calculates the accuracy between two sequences
-    Accuracy is calculated by dividing the number of matches 
-    over the length of the true sequence.
-    
-    Args:
-        y (str): true sequence
-        p (str): predicted sequence
-        alignment_function (object): alignment function from parasail
-        matrix (object): matrix object from `parasail.matrix_create`
-        open_penalty (int): penalty for opening a gap
-        extend_penalty (int): penalty for extending a gap
-        
-    Returns:
-        (float): with the calculated accuracy
-    """
-    
-    if len(p) == 0:
-        if len(y) == 0:
-            return 1
-        else:
-            return 0
-    
-    alignment = alignment_function(p, y, open_penalty, extend_penalty, matrix)
-    decoded_cigar = alignment.cigar.decode.decode()
-    long_cigar, cigar_counts, cigar_strs = elongate_cigar(decoded_cigar)
-    if len(long_cigar) == 0:
-        return 0
-    
-    matches = 0
-    for s, i in zip(cigar_strs, cigar_counts):
-        if s == '=':
-            matches += int(i)
-    
-    return matches/len(y)
 
 def read_metadata(file_name):
     """Read the metadata of a npz file
@@ -115,3 +62,31 @@ def read_metadata(file_name):
         fp.close()
     zip_file.close()
     return metadata
+
+def find_runs(x):
+    """Find runs of consecutive items in an array."""
+
+    # ensure array
+    x = np.asanyarray(x)
+    if x.ndim != 1:
+        raise ValueError('only 1D array supported')
+    n = x.shape[0]
+
+    # handle empty array
+    if n == 0:
+        return np.array([]), np.array([]), np.array([])
+
+    else:
+        # find run starts
+        loc_run_start = np.empty(n, dtype=bool)
+        loc_run_start[0] = True
+        np.not_equal(x[:-1], x[1:], out=loc_run_start[1:])
+        run_starts = np.nonzero(loc_run_start)[0]
+
+        # find run values
+        run_values = x[loc_run_start]
+
+        # find run lengths
+        run_lengths = np.diff(np.append(run_starts, n))
+
+        return run_values, run_starts, run_lengths

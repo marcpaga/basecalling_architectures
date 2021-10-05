@@ -11,7 +11,8 @@ sys.path.append('/hpc/compgen/users/mpages/babe/src')
 from classes import BaseModel
 from layers import BonitoLSTM
 from constants import CTC_BLANK
-from utils import decode_batch_greedy_ctc, alignment_accuracy
+from utils import decode_batch_greedy_ctc
+from evaluation import alignment_accuracy
 
 import torch
 from torch import nn
