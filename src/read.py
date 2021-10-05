@@ -1,10 +1,7 @@
 """
 Functions and classes to read data.
 """
-
-import h5py
 import os
-import numpy as np
 from ont_fast5_api.fast5_interface import get_fast5_file
 
 class ReadData:
@@ -125,7 +122,7 @@ def handle_fast5_file(fast5_file):
     f5_handler = get_fast5_file(fast5_file, 'r')
     
     if len(f5_handler.get_read_ids()) < 1:
-        raise InputError('This file does not contain read ids')
+        raise NameError('This file does not contain read ids')
         
     return f5_handler
     
@@ -154,33 +151,54 @@ def read_fast5(fast5_file, read_ids = None):
         
     return read_reads
 
-def read_fasta(fasta_file):
-    """Read a fasta file
+def iter_fasta(fasta_file):
+    """Read a fasta file iteratively
     """
-        
-    fasta_dict = dict()
     with open(fasta_file, 'r') as handle:
         for line in handle:
             if line.startswith('>'):
                 k = line[1:].strip('\n')
             else:
-                fasta_dict[k] = line.strip('\n')
+                seq = line.strip('\n')
+                yield (k, seq)
+
+def read_fasta(fasta_file):
+    """Read a fasta file
+    """
+        
+    fasta_dict = dict()
+    
+    for k, v in iter_fasta(fasta_file):
+        fasta_dict[k] = v
+
     return fasta_dict
+
+def iter_fastq(fastq_file):
+    """Read a fastq file iteratively
+    """
+    with open(fastq_file, 'r') as handle:
+        for line in handle:
+            if line.startswith('@'):
+                k = line[1:].split(' ')[0].strip('\n')
+                c = 0
+            else:
+                c += 1
+                if c == 1:
+                    seq = line.strip('\n')
+                    yield (k, seq)
+
 
 def read_fastq(fastq_file):
     """Read a fastq file
     """
     
     fastq_dict = dict()
-    with open(fastq_file, 'r') as handle:
-        for line in handle:
-            if line.startswith('@'):
-                k = line[1:].split(' ')[0].strip('\n')
-                fastq_dict[k] = list()
-            else:
-                fastq_dict[k].append(line.strip('\n'))
+    for k, v in iter_fastq(fastq_file):
+        fastq_dict[k] = v
                 
     return fastq_dict
+
+
                 
 def read_fna(file):
     """Read a fna file, like fasta but sequences are split by \n 
