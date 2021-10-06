@@ -1,14 +1,16 @@
 import re
 import numpy as np
 
-from constants import BASES, ALIGN_FUNCTION, MATRIX, ALIGNMENT_GAP_OPEN_PENALTY, ALIGNMENT_GAP_EXTEND_PENALTY
+from constants import BASES, GLOBAL_ALIGN_FUNCTION, LOCAL_ALIGN_FUNCTION, MATRIX, ALIGNMENT_GAP_OPEN_PENALTY, ALIGNMENT_GAP_EXTEND_PENALTY
 from utils import find_runs
 
 REPORT_COLUMNS = ['read_id', # id of the read
                     'len_reference', # length of the reference
                     'len_basecalls', # length of the basecalls
-                    'clipped_start', # number of insertions/deletions at the start of the alignment
-                    'clipped_end', # number of insertions/deletions at the end of the alignment
+                    'que_start',
+                    'que_end',
+                    'ref_start', # number of insertions/deletions at the start of the alignment
+                    'ref_end', # number of insertions/deletions at the end of the alignment
                     'decoded_cigar',
                     'comment'] 
 
@@ -26,10 +28,13 @@ for b in BASES:
     REPORT_COLUMNS.append('homo_'+b+'_counts')
     REPORT_COLUMNS.append('homo_'+b+'_errors')
 
-def align(que, ref):
+def align(que, ref, local = True):
     """Wrapper function to align two sequences
     """
-    return ALIGN_FUNCTION(que, ref, ALIGNMENT_GAP_OPEN_PENALTY, ALIGNMENT_GAP_EXTEND_PENALTY, MATRIX)
+    if local:
+        return LOCAL_ALIGN_FUNCTION(que, ref, ALIGNMENT_GAP_OPEN_PENALTY, ALIGNMENT_GAP_EXTEND_PENALTY, MATRIX)
+    else:
+        return GLOBAL_ALIGN_FUNCTION(que, ref, ALIGNMENT_GAP_OPEN_PENALTY, ALIGNMENT_GAP_EXTEND_PENALTY, MATRIX)
 
 def elongate_cigar(cigar):
     cigar_counts = re.split('H|X|=|I|D|N|S|P|M', cigar)
@@ -134,10 +139,15 @@ def eval_pair(ref, que):
     
     
     # align the two sequences
-    alignment = align(que, ref)
+    alignment = align(que, ref, local = True)
     decoded_cigar = alignment.cigar.decode.decode()
     long_cigar, _, _ = elongate_cigar(decoded_cigar)
     
+    que_st = alignment.cigar.beg_query
+    que_nd = alignment.end_query
+    ref_st = alignment.cigar.beg_ref
+    ref_nd = alignment.end_ref
+
     # calculate the local ends
     local = np.where((np.array(list(long_cigar)) == 'X') | (np.array(list(long_cigar)) == '='))[0]
     local_st = local[0]
@@ -145,15 +155,19 @@ def eval_pair(ref, que):
     
     # create a 2D array with the alignment
     alignment_arr = make_align_arr(long_cigar, ref, que)
-    local_arr = alignment_arr[:, local_st:local_nd]
+    # +1 to local_nd because the calculation gives the last position, so we 
+    # need one more for slicing
+    local_arr = alignment_arr[:, local_st:local_nd+1]
     
     result = dict()
     for k in REPORT_COLUMNS:
         result[k] = None
     result['len_reference'] = len(ref)
     result['len_basecalls'] = len(que)
-    result['clipped_start'] = local_st
-    result['clipped_end'] = local_nd
+    result['ref_start'] = ref_st
+    result['ref_end'] = ref_nd
+    result['que_start'] = que_st
+    result['que_end'] = que_nd
     result['decoded_cigar'] = decoded_cigar
     
     signatures = count_signatures(local_arr)
@@ -196,7 +210,7 @@ def eval_pair(ref, que):
     return result
 
 def count_signatures(arr):
-    """Counts the different signatures in a alingment array
+    """Counts the different signatures in a local alingment array
 
     Args:
         arr (np.array): array with the alignment
@@ -205,43 +219,35 @@ def count_signatures(arr):
         A dictionary with signatures as keys and counts as values
     """
 
+    if arr[0, 0] == '-' or arr[0, -1] == '-':
+        raise ValueError('The reference must start and end with bases, not insertions')
 
     # calculate the mutational signature style errors
     mut_dict = dict()
     for e in ERRORS:
         mut_dict[e] = 0
 
-    # slide a window of 3
-    for i in range(arr.shape[1] - 2):
-        cut_arr = arr[:, i:i+3]
-        
-        # if we need either:
-        # - ref_base + insertion + ref_base
-        # - 3 ref bases if insertion is not in second position
-        # this loop ensures that there are at least 3 reference bases
-        # although it is not necessary to do if insertion is in the middle
-        # it is better like this in case you have two insertions together
-        t = 1    
-        while np.sum('-' != cut_arr[0]) < 3:
-            cut_arr = arr[:,i:i+3+t]
-            t += 1
-            if i + 3 + t > arr.shape[1]:
-                break
+    # we iterate over the positions for which we can calculate a signature,
+    # which are all but the first and last bases
+    # for each of these positions we look for the closest base in the reference
+    # on the left side and right side
+    # then we get which code should be based on the chunk of the array that 
+    # we have
+    r = np.array(arr[0, :])
+    nogaps = r != '-'
+    pos = np.arange(0, len(nogaps), 1)
 
-        p = np.where(cut_arr[0] != '-')[0]
-        if len(p) < 3:
-            continue
-        st = p[0]
-        md = st + 1
-        nd = p[-1]
+    for i in np.arange(1, len(r) - 1, 1):
+        st = pos[:i][np.where(nogaps[:i])[0]][-1]
+        nd = pos[i+1:][np.where(nogaps[i+1:])[0]][0]
 
-        code = cut_arr[0, st] + cut_arr[0, md] + '>' + cut_arr[2, md] + cut_arr[0, nd]
+        code = arr[0, st] + arr[0, i] + '>' + arr[2, i] + arr[0, nd]
 
         mut_dict[code] += 1
     
     return mut_dict
 
-def alignment_accuracy(y, p, alignment_function = ALIGN_FUNCTION, matrix = MATRIX, 
+def alignment_accuracy(y, p, alignment_function = GLOBAL_ALIGN_FUNCTION, matrix = MATRIX, 
                        open_penalty = ALIGNMENT_GAP_OPEN_PENALTY, extend_penalty = ALIGNMENT_GAP_EXTEND_PENALTY):
     """Calculates the accuracy between two sequences
     Accuracy is calculated by dividing the number of matches 
