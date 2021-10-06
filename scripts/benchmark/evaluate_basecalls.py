@@ -6,14 +6,13 @@
 import argparse
 import os
 import sys
-import re
 import multiprocessing as mp
 
 import pandas as pd
 
 from tqdm import tqdm
 
-sys.path.append('../../src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from evaluation import eval_pair, REPORT_COLUMNS
 from read import iter_fastq, iter_fasta
 
@@ -56,8 +55,6 @@ def eval_pair_wrapper(references, prediction, write_queue):
     return None
 
     
-    
-
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
@@ -77,7 +74,7 @@ if __name__ == "__main__":
 
     manager = mp.Manager() 
     writer_queue = manager.Queue()
-    pool = mp.Pool(processes = args.processes + 1)
+    pool = mp.Pool(processes = args.processes)
     watcher_writer = pool.apply_async(results_queue_writer, (args.output_file, writer_queue))
 
     for bf in os.listdir(args.basecalls_path):
