@@ -95,5 +95,6 @@ ALIGNMENT_MISSMATCH_SCORE = 1
 CTC_BLANK = 0
 
 # evalution
-ALIGN_FUNCTION = parasail.nw_trace_striped_32
+GLOBAL_ALIGN_FUNCTION = parasail.nw_trace_striped_32
+LOCAL_ALIGN_FUNCTION = parasail.sw_trace_striped_32
 MATRIX = parasail.matrix_create("".join(BASES), ALIGNMENT_MATCH_SCORE, -ALIGNMENT_MISSMATCH_SCORE)
