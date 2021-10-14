@@ -2,22 +2,70 @@
 
 output_dir=$1
 
-human_link1_fast5="http://s3.amazonaws.com/nanopore-human-wgs/rel6/MultiFast5Tars/FAF04090-3842965088_Multi_Fast5.tar"
-human_link1_fastq="http://s3.amazonaws.com/nanopore-human-wgs/rel6/FASTQTars/FAF04090-3842965088_Multi.tar"
-human_link2_fast5="http://s3.amazonaws.com/nanopore-human-wgs/rel6/MultiFast5Tars/FAF09968-3439856925_Multi_Fast5.tar"
-human_link2_fastq="http://s3.amazonaws.com/nanopore-human-wgs/rel6/FASTQTars/FAF09968-3439856925_Multi.tar"
-human_link3_fast5="http://s3.amazonaws.com/nanopore-human-wgs/rel6/MultiFast5Tars/FAB42828-288548394_Multi_Fast5.tar"
-human_link3_fastq="http://s3.amazonaws.com/nanopore-human-wgs/rel6/FASTQTars/FAB42828-288548394_Multi.tar"
-human_ref_link="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz"
+# files with links to the data to be downloaded
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+data_links="${SCRIPT_DIR}/links_jain_data.txt"
+references_links="${SCRIPT_DIR}/links_jain_references.txt"
 
-wget $human_ref_link -O "${output_dir}/reference.fasta.gz"
-gzip -d "${output_dir}/reference.fasta.gz"
+mkdir -p $output_dir
 
-wget $human_link1_fast5 -O "${output_dir}/FAF04090_fast5.tar"
-wget $human_link1_fastq -O "${output_dir}/FAF04090_fastq.tar"
+# make a tmp dir for all the downloads so we can delete the dir afterwards
+tmp_dir="${output_dir}/tmp"
+mkdir -p $tmp_dir
 
-wget $human_link2_fast5 -O "${output_dir}/FAF09968_fast5.tar"
-wget $human_link2_fastq -O "${output_dir}/FAF09968_fastq.tar"
+# download the reference and unpack it
+genomes_dir="${output_dir}/genomes"
+mkdir -p $genomes_dir
 
-wget $human_link3_fast5 -O "${output_dir}/FAB42828_fast5.tar"
-wget $human_link3_fastq -O "${output_dir}/FAB42828_fastq.tar"
+while IFS= read -r line || [[ -n $line  ]]; do
+    if [ ! -f "${tmp_dir}/reference.fasta.gz" ]
+    then
+        echo "Downloading reference data"
+        wget $line -O "${tmp_dir}/reference.fasta.gz"
+    fi
+
+    if [ ! -f "${genomes_dir}/Homo_sapiens.fna" ]
+    then
+        echo "Decompressing reference data"
+        gunzip -c "${tmp_dir}/reference.fasta.gz" > "${genomes_dir}/Homo_sapiens.fna"
+    fi 
+done < $references_links
+
+
+# download the data
+while IFS= read -r line || [[ -n $line  ]]; do
+    files=($line)
+    filename=${files[0]##*/}
+    runid=${filename%-*}
+    
+    if [ ! -f "${tmp_dir}/${runid}_fastq.tar" ]
+    then
+        echo "Downloading basecalls data"
+        wget ${files[1]} -O "${tmp_dir}/${runid}_fastq.tar"
+    fi
+
+    if [ ! -f "${tmp_dir}/${runid}_fast5.tar" ]
+    then
+        echo "Downloading fast5 data"
+        wget ${files[0]} -O "${tmp_dir}/${runid}_fast5.tar"
+    fi
+
+    run_dir="${output_dir}/Homo_sapiens-${runid}"
+    fastq_dir="${run_dir}/fastq"
+    fast5_dir="${run_dir}/fast5"
+    mkdir -p $run_dir $fastq_dir $fast5_dir
+
+    if [ -z "$(ls -A ${fastq_dir})" ]
+    then
+        echo "Decompressing fastq data"
+        tar -xf "${tmp_dir}/${runid}_fastq.tar" -C "${run_dir}/fastq"
+    fi
+
+    if [ -z "$(ls -A ${fast5_dir})" ]
+    then
+        echo "Decompressing fast5 data"
+        tar -xf "${tmp_dir}/${runid}_fast5.tar" -C "${run_dir}/fast5"
+    fi
+
+done < $data_links
+
