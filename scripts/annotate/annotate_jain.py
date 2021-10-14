@@ -6,17 +6,17 @@ write a report on the segmentation status of fast5 files.
 
 import os
 import sys
+import argparse
 import glob
 import multiprocessing as mp
 import h5py
 
-sys.path.append('../../src')
-
-import read
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-import argparse
+
+sys.path.append('../../src')
+import read
 
 
 
@@ -40,7 +40,13 @@ def report_read(file_path, q, p):
     """
     
     read_data = read.read_fast5(file_path)
-    read_id = list(read_data.keys())[0]
+    try:
+        read_id = list(read_data.keys())[0]
+    except IndexError:
+        s = file_path + '\t' + "no_id" + '\t' + 'Failed_to_segment' + '\t' + 'NaN' + '\t' + 'NaN' + '\t' + 'NaN' + '\t' + 'NaN'
+        q.put(s)
+        return file_path, "no_id", 'Empty file'
+        
     read_data = read_data[read_id]
     
     if read_data.segmentation is None:
@@ -56,7 +62,6 @@ def report_read(file_path, q, p):
     s = file_path + '\t' + read_id + '\t' + 'Success' + '\t' + str(st) + '\t' + str(nd) + '\t' + str(strand) + '\t' + str(chrom)
     q.put(s)
     
-    file_name = file_path.split('/')[-1].split('.')[0]
     s = '>' + str(read_id) + '\n' + str("".join(read_data.segmentation['base'].tolist()))
     p.put(s)
     return file_path, read_id, 'Success'
