@@ -49,6 +49,9 @@ if __name__ == '__main__':
     
     
     # load the model
+    if not args.silent:
+        print('Loading model')
+    
     sys.path.append(args.model_dir)
     from config import model
     from basecaller import Basecaller
@@ -78,6 +81,9 @@ if __name__ == '__main__':
     checkpoint = torch.load(os.path.join(args.model_dir, 'checkpoints', best_checkpoint_file), map_location=torch.device(device))
     model.load_state_dict(checkpoint['model_state'])
     
+    if not args.silent:
+        print('Finding files to basecall')
+    
     # get the list of files to basecall
     files_list = list()
     if args.fast5_dir is not None:
@@ -93,6 +99,8 @@ if __name__ == '__main__':
                             overlap = args.overlap, 
                             batch_size = args.batch_size)
     
+    if not args.silent:
+        print('Basecalling')
     basecaller.basecall(files_list, 
                         output_dir = args.output_dir, 
                         reads_per_file = args.reads_file, 
