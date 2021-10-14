@@ -18,7 +18,7 @@ class BaseModel(nn.Module):
     """Abstract class for basecaller models
 
     It contains some basic methods: train, validate, predict, ctc_decode...
-    Since most models follow a similar style
+    Since most models follow a similar style.
     """
     
     def __init__(self, device, dataloader_train, dataloader_validation, 
@@ -113,7 +113,7 @@ class BaseModel(nn.Module):
     def decode_ctc_greedy(self, p):
         """Predict the bases in a greedy approach
         Args:
-            p (tensor): with classes as last dimension
+            p (tensor): [len, batch, classes]
         """
         p = p.detach()
         p = p.argmax(-1).permute(1, 0)
@@ -170,7 +170,7 @@ class BaseModel(nn.Module):
         y_len = torch.sum(y != CTC_BLANK, axis = 1).to(self.device)
         p_len = torch.full((p.shape[1], ), p.shape[0]).to(self.device)
         
-        loss = self.criterion(p, y, p_len, y_len)
+        loss = self.criterions["ctc"](p, y, p_len, y_len)
         
         return loss
     
