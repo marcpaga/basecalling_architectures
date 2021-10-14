@@ -51,7 +51,7 @@ if __name__ == '__main__':
     
     config_file_dir = '/'.join(args.config_file.split('/')[:-1])
     sys.path.append(config_file_dir)
-    from config import model, num_epochs, validate_every, checkpoint_every, output_dir
+    from config import model, num_epochs, validate_every, checkpoint_every, output_dir # pyright: reportMissingImports=false
     model = model.to(model.device)
     
     checkpoints_dir = os.path.join(output_dir, 'checkpoints')
