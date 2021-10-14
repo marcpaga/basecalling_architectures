@@ -3,7 +3,7 @@
 import os
 import sys
 from model import BonitoCRFModel
-sys.path.append('/hpc/compgen/users/mpages/babe/src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseNanoporeDataset
 from schedulers import cosine_decay_schedule, func_scheduler
 import torch

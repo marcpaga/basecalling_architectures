@@ -4,11 +4,12 @@ Based on:
 https://github.com/nanoporetech/bonito
 """
 
+import os
 import sys
 import torch
 from torch import nn
 
-sys.path.append('/hpc/compgen/users/mpages/babe/src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseModel
 from evaluation import alignment_accuracy
 from constants import CTC_BLANK

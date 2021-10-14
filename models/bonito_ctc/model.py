@@ -4,10 +4,11 @@ Based on:
 https://github.com/nanoporetech/bonito
 """
 
+import os
 import sys
 from torch import nn
 
-sys.path.append('/hpc/compgen/users/mpages/babe/src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseModel
 from layers import BonitoLSTM
 from evaluation import alignment_accuracy
@@ -28,8 +29,6 @@ class BonitoCTCModel(BaseModel):
         self.convolution = convolution
         self.rnn = rnn
         self.decoder = decoder
-        
-        self.criterion = nn.CTCLoss(zero_infinity = True).to(self.device)
         
         if self.convolution is None or self.self.rnn is None or self.decoder is None:
             self.load_default_configuration()
