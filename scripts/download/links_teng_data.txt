@@ -1,0 +1,2 @@
+https://data.genomicsresearch.org/Projects/train_set_all/S10/pass.tar.gz    Escherichia coli-0
+https://data.genomicsresearch.org/Projects/train_set_all/Lambda_old/pass.tar.gz Lambda phage-0
