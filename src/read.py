@@ -37,7 +37,10 @@ class ReadData:
     def __init__(self, read, filename):
 
         self.read_id = read.read_id
-        self.run_id = read.get_run_id().decode()
+        try:
+            self.run_id = read.get_run_id().decode()
+        except AttributeError:
+            self.run_id = read.get_run_id()
         self.filename = os.path.basename(read.filename)
 
         read_attrs = read.handle[read.raw_dataset_group_name].attrs
@@ -52,7 +55,10 @@ class ReadData:
 
         ## channel stuff
         self.mux = read_attrs['start_mux']
-        self.channel = channel_info['channel_number'].decode()
+        try:
+            self.channel = channel_info['channel_number'].decode()
+        except AttributeError:
+            self.channel = channel_info['channel_number']
         self.start = read_attrs['start_time'] / self.sampling_rate
         self.duration = read_attrs['duration'] / self.sampling_rate
 
