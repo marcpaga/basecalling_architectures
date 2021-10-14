@@ -238,10 +238,10 @@ class MinCallConvBlock(nn.Module):
         self.num_channels = num_channels
         self.first_channel = first_channel
 
-        self.bn1 = nn.BatchNorm1d()
+        self.bn1 = nn.BatchNorm1d(self.first_channel)
         self.conv1 = nn.Conv1d(self.first_channel, self.num_channels, self.kernel_size, 1, self.padding)
         self.elu1 = nn.ELU()
-        self.bn2 = nn.BatchNormd1d()
+        self.bn2 = nn.BatchNorm1d(self.num_channels)
         self.conv2 = nn.Conv1d(self.num_channels, self.num_channels, self.kernel_size, 1, self.padding)
         self.elu2 = nn.ELU()
 
@@ -250,13 +250,13 @@ class MinCallConvBlock(nn.Module):
         Args:
             x (tensor): input with shape [batch, channels, timesteps]
         """
-
+        residual = x
         xb = self.bn1(x)
         xb = self.elu1(xb)
         xb = self.conv1(xb)
         xb = self.bn2(xb)
         xb = self.elu2(xb)
         xb = self.conv2(xb)
-        x += xb
+        xb += residual
 
-        return x
+        return xb
