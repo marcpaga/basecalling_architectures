@@ -1,21 +1,17 @@
 """Implementation of the Bonito-CTC model
 
-Most of the code has been copied with or without modifications from:
+Based on: 
 https://github.com/nanoporetech/bonito
-
 """
 
 import sys
-import os
+from torch import nn
+
 sys.path.append('/hpc/compgen/users/mpages/babe/src')
 from classes import BaseModel
 from layers import BonitoLSTM
-from constants import CTC_BLANK
-from utils import decode_batch_greedy_ctc
 from evaluation import alignment_accuracy
 
-import torch
-from torch import nn
 
 class BonitoCTCModel(BaseModel):
     """BonitoCTC Model
@@ -37,57 +33,20 @@ class BonitoCTCModel(BaseModel):
         
         if self.convolution is None or self.self.rnn is None or self.decoder is None:
             self.load_default_configuration()
-        
-        
-    def train_step(self, batch):
-        """Train a step with a batch of data
+
+    def forward(self, x):
+        """Forward pass of a batch
         
         Args:
-            batch (dict): dict with keys 'x' (batch, len) 
-                                         'y' (batch, len)
+            x (tensor) : [batch, channels (1), len]
         """
         
-        self.train()
-        x = batch['x'].to(self.device)
-        x = x.unsqueeze(1) # add channels dimension
-        p = self.forward(x) # forward through the network
-        y = batch['y'].to(self.device)
+        x = self.convolution(x)
+        x = x.permute(2, 0, 1) # [len, batch, channels]
+        x = self.rnn(x)
+        x = self.decoder(x)
+        return x
         
-        loss, losses = self.calculate_loss(y, p)
-        self.optimize(loss)
-        
-        return losses, p
-        
-    
-    def validation_step(self, batch):
-        """Predicts a single batch of data
-        Args:
-            batch (dict): dict filled with tensors of input and output
-        """
-        
-        self.eval()
-        with torch.no_grad():
-            x = batch['x'].to(self.device)
-            x = x.unsqueeze(1) # add channels dimension
-            p = self.forward(x) # forward through the network
-            y = batch['y'].to(self.device)
-            
-            loss, losses = self.calculate_loss(y, p)
-            
-        return losses, p
-    
-    def predict_step(self, batch):
-        """
-        Args:
-            batch (dict) dict fill with tensor just for prediction
-        """
-        self.eval()
-        with torch.no_grad():
-            x = batch['x'].to(self.device)
-            x = x.unsqueeze(1)
-            p = self.forward(x)
-            
-        return p
     
     def decode(self, p, greedy = True):
         """Decode the predictions
@@ -99,28 +58,9 @@ class BonitoCTCModel(BaseModel):
             A (list) with the decoded strings
         """
         if greedy:
-            return self.decode_greedy(p)
+            return self.decode_ctc_greedy(p)
         else:
-            raise NotImplementedError('Beam search not yet implemented')
-        
-    
-    def decode_greedy(self, p):
-        """Predict the bases in a greedy approach
-        Args:
-            p (tensor): with classes as last dimension
-        """
-        p = p.detach()
-        p = p.argmax(-1).permute(1, 0)
-        p = p.cpu().numpy()
-        decoded_predictions =  decode_batch_greedy_ctc(y = p, 
-                                                       decode_dict = self.dataloader_train.dataset.decoding_dict, 
-                                                       blank_label = CTC_BLANK)
-        return decoded_predictions
-    
-    def decode_beam_search(self):
-        """Predict the bases using beam search
-        """
-        raise NotImplementedError()
+            return self.decode_ctc_beam_search(p)
         
     def evaluate(self, batch, predictions):
         """Evaluate the predictions by calculating the accuracy
@@ -130,15 +70,10 @@ class BonitoCTCModel(BaseModel):
             predictions (list): list of predicted sequences as strings
         """
         y = batch['y'].cpu().numpy()
+        y_list = self.dataloader_train.dataset.encoded_array_to_list_strings(y)
         accs = list()
-        for i, sample in enumerate(y):
-            y_str = ''
-            for s in sample:
-                if s == CTC_BLANK:
-                    break
-                y_str += self.dataloader_train.dataset.decoding_dict[s]
-                
-            accs.append(alignment_accuracy(y_str, predictions[i]))
+        for i, sample in enumerate(y_list):
+            accs.append(alignment_accuracy(sample, predictions[i]))
             
         return {'metric.accuracy': accs}
             
@@ -155,27 +90,11 @@ class BonitoCTCModel(BaseModel):
                 global_loss
         """
         
-        y_len = torch.sum(y != CTC_BLANK, axis = 1).to(self.device)
-        p_len = torch.full((p.shape[1], ), p.shape[0]).to(self.device)
-        
-        loss = self.criterion(p, y, p_len, y_len)
+        loss = self.calculate_ctc_loss(y, p)
         losses = {'loss.global': loss.item(), 'loss.ctc': loss.item()}
         
         return loss, losses
         
-        
-    def forward(self, x):
-        """Forward pass of a batch
-        
-        Args:
-            x (tensor) : [batch, channels (1), len]
-        """
-        
-        x = self.convolution(x)
-        x = x.permute(2, 0, 1) # [len, batch, channels]
-        x = self.rnn(x)
-        x = self.decoder(x)
-        return x
         
     def load_default_configuration(self, default_all = False):
         """Sets the default configuration for one or more

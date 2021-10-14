@@ -5,14 +5,20 @@ from torch.utils.data import Dataset, Sampler, DataLoader
 from abc import abstractmethod
 import numpy as np
 import random
-from utils import read_metadata
-from read import read_fast5
-from normalization import normalize_signal_from_read_data
 from tqdm import tqdm
 import warnings
+from pathlib import Path
+
+from utils import read_metadata, decode_batch_greedy_ctc
+from read import read_fast5
+from normalization import normalize_signal_from_read_data
+from constants import CTC_BLANK
 
 class BaseModel(nn.Module):
-    """ Abstract class for basecaller models
+    """Abstract class for basecaller models
+
+    It contains some basic methods: train, validate, predict, ctc_decode...
+    Since most models follow a similar style
     """
     
     def __init__(self, device, dataloader_train, dataloader_validation, 
@@ -35,31 +41,60 @@ class BaseModel(nn.Module):
         self.init_weights()
         self.stride = self.get_stride()
         
-    @abstractmethod    
+    @abstractmethod
+    def forward(self, batch):
+        """Forward through the network
+        """
+        raise NotImplementedError()
+    
     def train_step(self, batch):
+        """Train a step with a batch of data
+        
+        Args:
+            batch (dict): dict with keys 'x' (batch, len) 
+                                         'y' (batch, len)
+        """
+        
+        self.train()
+        x = batch['x'].to(self.device)
+        x = x.unsqueeze(1) # add channels dimension
+        p = self.forward(x) # forward through the network
+        y = batch['y'].to(self.device)
+        
+        loss, losses = self.calculate_loss(y, p)
+        self.optimize(loss)
+        
+        return losses, p
+    
+    def validation_step(self, batch):
         """Predicts a single batch of data
         Args:
             batch (dict): dict filled with tensors of input and output
         """
-        raise NotImplementedError()
-        return losses, predictions
-    
-    @abstractmethod
-    def validate_step(self, batch):
-        """Predicts a single batch of data for valudation
-        Args:
-            batch (dict): dict filled with tensors of input and output
-        """
-        raise NotImplementedError()
-        return losses, predictions
+        
+        self.eval()
+        with torch.no_grad():
+            x = batch['x'].to(self.device)
+            x = x.unsqueeze(1) # add channels dimension
+            p = self.forward(x) # forward through the network
+            y = batch['y'].to(self.device)
+            
+            _, losses = self.calculate_loss(y, p)
+            
+        return losses, p
     
     def predict_step(self, batch):
-        """Predicts a single batch of data
-        Args:
-            batch (dict): dict filled with tensors of input only
         """
-        raise NotImplementedError()
-        return predictions
+        Args:
+            batch (dict) dict fill with tensor just for prediction
+        """
+        self.eval()
+        with torch.no_grad():
+            x = batch['x'].to(self.device)
+            x = x.unsqueeze(1)
+            p = self.forward(x)
+            
+        return p
     
     @abstractmethod    
     def decode(self, p, greedy = True):
@@ -74,7 +109,26 @@ class BaseModel(nn.Module):
             A (list) with the decoded strings
         """
         raise NotImplementedError()
+
+    def decode_ctc_greedy(self, p):
+        """Predict the bases in a greedy approach
+        Args:
+            p (tensor): with classes as last dimension
+        """
+        p = p.detach()
+        p = p.argmax(-1).permute(1, 0)
+        p = p.cpu().numpy()
+        decoded_predictions = decode_batch_greedy_ctc(y = p, 
+                                                      decode_dict = self.dataloader_train.dataset.decoding_dict, 
+                                                      blank_label = CTC_BLANK)
+        return decoded_predictions
+    
+    def decode_ctc_beam_search(self):
+        """Predict the bases using beam search
+        """
+        raise NotImplementedError()
         
+    @abstractmethod
     def evaluate(self):
         """Abstract method that takes care of how to calculate any
         evaluation metric.
@@ -83,6 +137,7 @@ class BaseModel(nn.Module):
         """
         raise NotImplementedError()
         return evaluation_metrics
+
     
     @abstractmethod    
     def calculate_loss(self, y, p):
@@ -100,6 +155,24 @@ class BaseModel(nn.Module):
         
         raise NotImplementedError()
         return loss, losses
+
+    def calculate_ctc_loss(self, y, p):
+        """Calculates the ctc loss
+        
+        Args:
+            y (tensor): tensor with labels [batch, len]
+            p (tensor): tensor with predictions [len, batch, channels]
+            
+        Returns:
+            loss (tensor): weighted sum of losses
+        """
+        
+        y_len = torch.sum(y != CTC_BLANK, axis = 1).to(self.device)
+        p_len = torch.full((p.shape[1], ), p.shape[0]).to(self.device)
+        
+        loss = self.criterion(p, y, p_len, y_len)
+        
+        return loss
     
     
     def optimize(self, loss):
@@ -109,11 +182,18 @@ class BaseModel(nn.Module):
             loss (float): calculated loss that can be backpropagated
         """
         
-        if self.use_sam:
-            loss.backward()
-            self.optimizer.first_step(zero_grad=True)
-            loss, losses = self.calculate_loss(y, p)
-            self.optimizer.second_step(zero_grad=True)
+        if self.use_sam: 
+            raise NotImplementedError()
+            # TODO
+            # it is tricky how to use this SAM thing (https://github.com/davda54/sam)
+            # because we have to calculate the loss twice, so we have to find a way
+            # to make this general
+            # also, it is unclear where to put the gradient clipping
+
+            # loss.backward()
+            # self.optimizer.first_step(zero_grad=True)
+            # loss, losses = self.calculate_loss(y, p)
+            # self.optimizer.second_step(zero_grad=True)
         else:
             self.optimizer.zero_grad()
             loss.backward()
@@ -342,7 +422,7 @@ class BaseNanoporeDataset(Dataset):
         return new_y
     
     
-    def decode(self):
+    def decode(self, y_arr):
         """Decode the labels
         """
         
@@ -350,7 +430,18 @@ class BaseNanoporeDataset(Dataset):
         for k, v in self.decoding_dict.items():
             y_arr[y_arr == k] = v
         return y_arr
-        
+    
+    def encoded_array_to_list_strings(self, y_arr):
+        """Decoded the encoded labels into strings
+        """
+
+        y_list = list()
+        for sample in y_arr:
+            y_str = ""
+            for s in sample:
+                y_str += self.decoding_dict[s]
+            y_list.append(y_str)
+        return y_list
         
 class IdxSampler(Sampler):
     """Sampler class to not sample from all the samples
@@ -385,7 +476,7 @@ class BaseFast5Dataset(Dataset):
     
     def __getitem__(self, idx):
         read_data = read_fast5(self.data_files[idx])
-        return read_fast5
+        return read_data
         
     def find_all_fast5_files(self):
         """Find all fast5 files in a dir recursively
