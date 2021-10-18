@@ -1,18 +1,17 @@
-"""Configuration file of a Skeleton model
+"""Configuration file of a SkeletonModel
 """
 import os
 import sys
-from model import Skeleton
-sys.path.append('/hpc/compgen/users/mpages/babe/src')
+from model import SkeletonModel as Model
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseNanoporeDataset
-from schedulers import cosine_decay_schedule, func_scheduler
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model_name = ''
-
+model_type = 'crf' # ctc or crf
+model_name = '500_cnv3_rnn5' + '_' + model_type
 output_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/skeleton'
 
 ## TRAIN CONFIGURATION #############################################
@@ -24,7 +23,7 @@ checkpoint_every = 5000
 
 
 ##       DATA.         #############################################
-data_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/train_input/inter/2000.0'
+data_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/train_input/inter/500.0'
 encoding_dict = {'A': 1 , 'C':  2 , 'G':  3 , 'T':  4 , '':  0}
 decoding_dict = { 1 :'A',  2 : 'C',  3 : 'G',  4 : 'T', 0 : ''}
 dataset = BaseNanoporeDataset(data_dir = data_dir, 
@@ -41,9 +40,10 @@ dataloader_validation = DataLoader(dataset, batch_size = validation_batch_size,
 
 
 ##   MODEL PART1        #############################################
-model = Skeleton(device = device,
-                 dataloader_train = dataloader_train, 
-                 dataloader_validation = dataloader_validation)
+model = Model(device = device,
+              dataloader_train = dataloader_train, 
+              dataloader_validation = dataloader_validation, 
+              model_type = model_type)
 
 
 ##    OPTIMIZATION     #############################################
@@ -52,7 +52,6 @@ schedulers = {'lr_scheduler': torch.optim.lr_scheduler.CosineAnnealingLR(optimiz
                                                                          eta_min=0.00001, last_epoch=-1, verbose=False),
              }
 clipping_value = 2
-criterions = {'ctc': nn.CTCLoss(zero_infinity = True).to(device)}
 use_sam = False
 
 
@@ -60,7 +59,6 @@ use_sam = False
 model.optimizer = optimizer
 model.schedulers = schedulers
 model.clipping_value = clipping_value
-model.criterions = criterions
 model.use_sam = False
 
 output_dir = os.path.join(output_dir, data_dir.split('/')[-2], model_name)
