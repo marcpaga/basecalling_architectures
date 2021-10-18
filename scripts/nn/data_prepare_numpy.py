@@ -10,7 +10,7 @@ from normalization import normalize_signal_wrapper
 from seeds import DATA_PREPARE_READ_SHUFFLE
 
 import numpy as np
-from math import inf
+import math
 from pathlib import Path
 import multiprocessing as mp
 from tqdm import tqdm
@@ -101,7 +101,7 @@ def segment_read(read_file, window_length, overlap, min_bases, max_bases):
     x = np.vstack(x_list)
     # for the y array we have to pre allocate the array as each
     # segment can be of a different length
-    if max_bases == inf:
+    if max_bases == math.inf:
         max_len = window_length
     else:
         max_len = max_bases
@@ -210,7 +210,7 @@ if __name__ == "__main__":
     parser.add_argument("--window-size", type=int, help='Size of the window of a raw data segment', default = 2000)
     parser.add_argument("--window-slide", type=int, help='Number of datapoints of overlap between sequential segments', default = 0)
     parser.add_argument("--min-bases", type=int, help='Minimum number of bases for a segment to be kept', default = 10)
-    parser.add_argument("--max-bases", type=int, help='Maximum number of bases for a segment to be kept', default = inf)
+    parser.add_argument("--max-bases", type=int, help='Maximum number of bases for a segment to be kept', default = math.inf)
     parser.add_argument("--n-cores", type=int, help='Number of parallel processes, do not use more processes than total files as it will be wasted resources', default = 1)
     parser.add_argument("--verbose", action='store_true', help='Print a progress bar')
     args = parser.parse_args()
