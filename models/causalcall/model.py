@@ -4,15 +4,16 @@
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-from classes import BaseCTCModel
+from classes import BaseModelImpl
 from torch import nn
-from layers import CausalCallConvBlock
+from layers import CausalCallConvBlock, BonitoLinearCRFDecoder
+from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE , CRF_N_BASE 
 
-class CausalCallCTC(BaseCTCModel):
+class CausalCall(BaseModelImpl):
     """CasualCallCTC Model
     """
     def __init__(self, convolution = None, decoder = None, *args, **kwargs):
-        super(CausalCallCTC, self).__init__(*args, **kwargs)
+        super(CausalCall, self).__init__(*args, **kwargs)
         """
         Args:
            convolution (nn.Module): module with: in [batch, channel, len]; out [batch, channel, len]
@@ -54,7 +55,19 @@ class CausalCallCTC(BaseCTCModel):
             self.convolution = nn.Sequential(*layers)
 
         if self.decoder is None or default_all:
-            self.decoder = nn.Sequential(nn.Linear(int(num_channels/2), num_channels), 
-                                         nn.ReLU(),
-                                         nn.Linear(num_channels, 5),
-                                         nn.LogSoftmax(-1))
+            if self.model_type == 'ctc':
+                self.decoder = nn.Sequential(nn.Linear(int(num_channels/2), num_channels), 
+                                            nn.ReLU(),
+                                            nn.Linear(num_channels, 5),
+                                            nn.LogSoftmax(-1))
+            elif self.model_type == 'crf':
+                self.decoder = nn.Sequential(nn.Linear(int(num_channels/2), num_channels), 
+                                             nn.ReLU(),
+                                             BonitoLinearCRFDecoder(
+                                                insize = 384, 
+                                                n_base = CRF_N_BASE, 
+                                                state_len = CRF_STATE_LEN, 
+                                                bias=CRF_BIAS, 
+                                                scale= CRF_SCALE, 
+                                                blank_score= CRF_BLANK_SCORE
+                                             ))

@@ -1,24 +1,23 @@
-"""Configuration file of a Bonito CRF model
+"""Configuration file of a Bonito-CRF model
 """
 import os
 import sys
-from model import BonitoCRFModel
+from model import BonitoModel as Model
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseNanoporeDataset
-from schedulers import cosine_decay_schedule, func_scheduler
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model_name = '500_cnv3_rnn5'
-
-output_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/bonito_crf' # do not put the task here, it is added based on data_dir
+model_type = 'crf' # ctc or crf
+model_name = '500_cnv3_rnn5' + '_' + model_type
+output_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/bonito'
 
 ## TRAIN CONFIGURATION #############################################
 num_epochs = 3
-train_batch_size = 128
-validation_batch_size = 128
+train_batch_size = 256
+validation_batch_size = 256
 validate_every = 100
 checkpoint_every = 5000
 
@@ -41,9 +40,10 @@ dataloader_validation = DataLoader(dataset, batch_size = validation_batch_size,
 
 
 ##   MODEL PART1        #############################################
-model = BonitoCRFModel(device = device,
-                       dataloader_train = dataloader_train, 
-                       dataloader_validation = dataloader_validation)
+model = Model(device = device,
+              dataloader_train = dataloader_train, 
+              dataloader_validation = dataloader_validation, 
+              model_type = model_type)
 
 
 ##    OPTIMIZATION     #############################################

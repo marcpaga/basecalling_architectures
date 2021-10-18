@@ -9,15 +9,16 @@ import sys
 from torch import nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-from classes import BaseCTCModel
-from layers import BonitoLSTM
+from classes import BaseModelImpl
+from layers import BonitoLSTM, BonitoLinearCRFDecoder
+from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE , CRF_N_BASE 
 
 
-class BonitoCTCModel(BaseCTCModel):
+class BonitoModel(BaseModelImpl):
     """BonitoCTC Model
     """
     def __init__(self, convolution = None, rnn = None, decoder = None, *args, **kwargs):
-        super(BonitoCTCModel, self).__init__(*args, **kwargs)
+        super(BonitoModel, self).__init__(*args, **kwargs)
         """
         Args:
             convolution (nn.Module): module with: in [batch, channel, len]; out [batch, channel, len]
@@ -68,4 +69,14 @@ class BonitoCTCModel(BaseCTCModel):
                                      BonitoLSTM(384, 384, reverse = False),
                                      BonitoLSTM(384, 384, reverse = True))
         if self.decoder is None or default_all:
-            self.decoder = nn.Sequential(nn.Linear(384, 5), nn.LogSoftmax(-1))
+            if self.model_type == 'ctc':
+                self.decoder = nn.Sequential(nn.Linear(384, 5), nn.LogSoftmax(-1))
+            elif self.model_type == 'crf':
+                self.decoder = BonitoLinearCRFDecoder(
+                    insize = 384, 
+                    n_base = CRF_N_BASE, 
+                    state_len = CRF_STATE_LEN, 
+                    bias=CRF_BIAS, 
+                    scale= CRF_SCALE, 
+                    blank_score= CRF_BLANK_SCORE
+                )

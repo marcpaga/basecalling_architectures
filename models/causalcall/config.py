@@ -2,7 +2,7 @@
 """
 import os
 import sys
-from model import CausalCallCTC
+from model import CausalCall as Model
 sys.path.append('/hpc/compgen/users/mpages/babe/src')
 from classes import BaseNanoporeDataset
 import torch
@@ -10,9 +10,10 @@ from torch import nn
 from torch.utils.data import DataLoader
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model_name = 'test'
+model_type = 'crf' # ctc or crf
+model_name = 'test' + '_' + model_type
 
-output_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/causalcall_ctc'
+output_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/causalcall'
 
 ## TRAIN CONFIGURATION #############################################
 num_epochs = 3
@@ -40,9 +41,10 @@ dataloader_validation = DataLoader(dataset, batch_size = validation_batch_size,
 
 
 ##   MODEL PART1        #############################################
-model = CausalCallCTC(device = device,
-                      dataloader_train = dataloader_train, 
-                      dataloader_validation = dataloader_validation)
+model = Model(device = device,
+              dataloader_train = dataloader_train, 
+              dataloader_validation = dataloader_validation, 
+              model_type = model_type)
 
 
 ##    OPTIMIZATION     #############################################

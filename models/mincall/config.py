@@ -1,30 +1,30 @@
-"""Configuration file of a Bonito-CRF model
+"""Configuration file of a Skeleton model
 """
 import os
 import sys
-from model import BonitoCTCModel
+from model import MinCall as Model
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseNanoporeDataset
-from schedulers import cosine_decay_schedule, func_scheduler
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model_name = '500_cnv3_rnn5'
+model_type = 'crf'
+model_name = 'test' + '_' + model_type
 
-output_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/bonito_ctc'
+output_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/mincall'
 
 ## TRAIN CONFIGURATION #############################################
 num_epochs = 3
-train_batch_size = 256
-validation_batch_size = 256
+train_batch_size = 64
+validation_batch_size = 64
 validate_every = 100
 checkpoint_every = 5000
 
 
 ##       DATA.         #############################################
-data_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/train_input/inter/500.0'
+data_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/train_input/inter/2000.0'
 encoding_dict = {'A': 1 , 'C':  2 , 'G':  3 , 'T':  4 , '':  0}
 decoding_dict = { 1 :'A',  2 : 'C',  3 : 'G',  4 : 'T', 0 : ''}
 dataset = BaseNanoporeDataset(data_dir = data_dir, 
@@ -41,9 +41,10 @@ dataloader_validation = DataLoader(dataset, batch_size = validation_batch_size,
 
 
 ##   MODEL PART1        #############################################
-model = BonitoCTCModel(device = device,
-                       dataloader_train = dataloader_train, 
-                       dataloader_validation = dataloader_validation)
+model = Model(device = device,
+              dataloader_train = dataloader_train, 
+              dataloader_validation = dataloader_validation, 
+              model_type = model_type)
 
 
 ##    OPTIMIZATION     #############################################
