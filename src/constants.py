@@ -84,6 +84,7 @@ HUMAN_CHROMOSOMES_ODD = ['chr1',
 HUMAN_CHROMOSOMES_OTHER = ['chrX', 'chrY', 'chrM']
 
 BASES = ['A', 'C', 'G', 'T']
+BASES_CRF = 'N' + ''.join(BASES)
 
 # parasail alignment configuration
 ALIGNMENT_GAP_OPEN_PENALTY = 8

@@ -12,7 +12,9 @@ from pathlib import Path
 from utils import read_metadata, decode_batch_greedy_ctc
 from read import read_fast5
 from normalization import normalize_signal_from_read_data
-from constants import CTC_BLANK
+from constants import CTC_BLANK, BASES_CRF
+from evaluation import alignment_accuracy
+import layers
 
 class BaseModel(nn.Module):
     """Abstract class for basecaller models
@@ -109,24 +111,6 @@ class BaseModel(nn.Module):
             A (list) with the decoded strings
         """
         raise NotImplementedError()
-
-    def decode_ctc_greedy(self, p):
-        """Predict the bases in a greedy approach
-        Args:
-            p (tensor): [len, batch, classes]
-        """
-        p = p.detach()
-        p = p.argmax(-1).permute(1, 0)
-        p = p.cpu().numpy()
-        decoded_predictions = decode_batch_greedy_ctc(y = p, 
-                                                      decode_dict = self.dataloader_train.dataset.decoding_dict, 
-                                                      blank_label = CTC_BLANK)
-        return decoded_predictions
-    
-    def decode_ctc_beam_search(self):
-        """Predict the bases using beam search
-        """
-        raise NotImplementedError()
         
     @abstractmethod
     def evaluate(self):
@@ -155,24 +139,6 @@ class BaseModel(nn.Module):
         
         raise NotImplementedError()
         return loss, losses
-
-    def calculate_ctc_loss(self, y, p):
-        """Calculates the ctc loss
-        
-        Args:
-            y (tensor): tensor with labels [batch, len]
-            p (tensor): tensor with predictions [len, batch, channels]
-            
-        Returns:
-            loss (tensor): weighted sum of losses
-        """
-        
-        y_len = torch.sum(y != CTC_BLANK, axis = 1).to(self.device)
-        p_len = torch.full((p.shape[1], ), p.shape[0]).to(self.device)
-        
-        loss = self.criterions["ctc"](p, y, p_len, y_len)
-        
-        return loss
     
     
     def optimize(self, loss):
@@ -205,6 +171,21 @@ class BaseModel(nn.Module):
                 scheduler.step()
             
         return None
+
+    def evaluate(self, batch, predictions):
+        """Evaluate the predictions by calculating the accuracy
+        
+        Args:
+            batch (dict): dict with tensor with [batch, len] in key 'y'
+            predictions (list): list of predicted sequences as strings
+        """
+        y = batch['y'].cpu().numpy()
+        y_list = self.dataloader_train.dataset.encoded_array_to_list_strings(y)
+        accs = list()
+        for i, sample in enumerate(y_list):
+            accs.append(alignment_accuracy(sample, predictions[i]))
+            
+        return {'metric.accuracy': accs}
     
     def init_weights(self):
         """Initialize weights from uniform distribution
@@ -240,6 +221,171 @@ class BaseModel(nn.Module):
         """Method to load default model configuration
         """
         raise NotImplementedError()
+
+class BaseModelCTC(BaseModel):
+    
+    def __init__(self, blank = CTC_BLANK, *args, **kwargs):
+        """
+        Args:   
+            blank (int): class index for CTC blank
+        """
+        super(BaseModelCTC, self).__init__(*args, **kwargs)
+
+        self.criterions['ctc'] = nn.CTCLoss(blank = blank, zero_infinity = True).to(self.device)
+
+    def decode(self, p, greedy = True):
+        """Decode the predictions
+         
+        Args:
+            p (tensor): tensor with the predictions with shape [timesteps, batch, classes]
+            greedy (bool): whether to decode using a greedy approach
+        Returns:
+            A (list) with the decoded strings
+        """
+        if greedy:
+            return self.decode_ctc_greedy(p)
+        else:
+            return self.decode_ctc_beamsearch(p)
+
+    def decode_ctc_greedy(self, p):
+        """Predict the bases in a greedy approach
+        Args:
+            p (tensor): [len, batch, classes]
+        """
+        p = p.detach()
+        p = p.argmax(-1).permute(1, 0)
+        p = p.cpu().numpy()
+        decoded_predictions = decode_batch_greedy_ctc(y = p, 
+                                                      decode_dict = self.dataloader_train.dataset.decoding_dict, 
+                                                      blank_label = CTC_BLANK)
+        return decoded_predictions
+
+    def decode_ctc_beamsearch(self, p):
+        raise NotImplementedError()
+            
+    def calculate_loss(self, y, p):
+        """Calculates the losses for each criterion
+        
+        Args:
+            y (tensor): tensor with labels [batch, len]
+            p (tensor): tensor with predictions [len, batch, channels]
+            
+        Returns:
+            loss (tensor): weighted sum of losses
+            losses (dict): with detached values for each loss, the weighed sum is named
+                global_loss
+        """
+        
+        loss = self.calculate_ctc_loss(y, p)
+        losses = {'loss.global': loss.item(), 'loss.ctc': loss.item()}
+
+        return loss, losses
+
+    def calculate_ctc_loss(self, y, p):
+        """Calculates the ctc loss
+        
+        Args:
+            y (tensor): tensor with labels [batch, len]
+            p (tensor): tensor with predictions [len, batch, channels]
+            
+        Returns:
+            loss (tensor): weighted sum of losses
+        """
+        
+        y_len = torch.sum(y != CTC_BLANK, axis = 1).to(self.device)
+        p_len = torch.full((p.shape[1], ), p.shape[0]).to(self.device)
+        
+        loss = self.criterions["ctc"](p, y, p_len, y_len)
+        
+        return loss
+
+class BaseModelCRF(BaseModel):
+    
+    def __init__(self, state_len = 4, alphabet = BASES_CRF, *args, **kwargs):
+        """
+        Args:
+            state_len (int): k-mer length for the states
+            alphabet (str): bases available for states, defaults 'NACGT'
+        """
+        super(BaseModelCRF, self).__init__(*args, **kwargs)
+
+        self.alphabet = alphabet
+        self.state_len = alphabet
+        self.seqdist = layers.CTC_CRF(state_len = state_len, alphabet = alphabet)
+        self.criterions = {'crf': self.seqdist.ctc_loss}
+
+        
+    def decode(self, p, greedy = True):
+        """Decode the predictions
+        
+        Args:
+            p (tensor): tensor with the predictions with shape [timesteps, batch, classes]
+            greedy (bool): whether to decode using a greedy approach
+        Returns:
+            A (list) with the decoded strings
+        """
+        if greedy:
+            return self.decode_crf_greedy(p)
+        else:
+            return self.decode_crf_beamsearch(p)
+    
+    def decode_crf_greedy(self, y):
+        """Predict the sequences using a greedy approach
+        
+        Args:
+            y (tensor): tensor with scores in shape [timesteps, batch, classes]
+        Returns:
+            A (list) with the decoded strings
+        """
+        scores = self.seqdist.posteriors(y.to(torch.float32)) + 1e-8
+        tracebacks = self.seqdist.viterbi(scores.log()).to(torch.int16).T
+        return [self.seqdist.path_to_str(y) for y in tracebacks.cpu().numpy()]
+
+    def decode_crf_beamsearch(self, y):
+        raise NotImplementedError()
+
+    def calculate_loss(self, y, p):
+        """Calculates the losses for each criterion
+        
+        Args:
+            y (tensor): tensor with labels [batch, len]
+            p (tensor): tensor with predictions [len, batch, channels]
+            
+        Returns:
+            loss (tensor): weighted sum of losses
+            losses (dict): with detached values for each loss, the weighed sum is named
+                global_loss
+        """
+        
+        loss = self.calculate_crf_loss(y, p)
+        losses = {'loss.global': loss.item(), 'loss.crf': loss.item()}
+
+        return loss, losses
+
+    def calculate_crf_loss(self, y, p):
+        """Calculates the losses for each criterion
+        
+        Args:
+            y (tensor): tensor with labels [batch, len]
+            p (tensor): tensor with predictions [len, batch, channels]
+            
+        Returns:
+            loss (tensor): weighted sum of losses
+            losses (dict): with detached values for each loss, the weighed sum is named
+                global_loss
+        """
+        
+        y_len = torch.sum(y != CTC_BLANK, axis = 1).to(self.device)
+        loss = self.criterion['crf'](scores = p, 
+                                     targets = y, 
+                                     target_lengths = y_len, 
+                                     loss_clip = 10, 
+                                     reduction='mean', 
+                                     normalise_scores=True)
+        return loss
+
+class BaseModelS2S(BaseModel):
+    pass
     
 class BaseNanoporeDataset(Dataset):
     """Base dataset class that contains Nanopore data

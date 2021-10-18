@@ -9,12 +9,11 @@ import sys
 from torch import nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-from classes import BaseModel
+from classes import BaseCTCModel
 from layers import BonitoLSTM
-from evaluation import alignment_accuracy
 
 
-class BonitoCTCModel(BaseModel):
+class BonitoCTCModel(BaseCTCModel):
     """BonitoCTC Model
     """
     def __init__(self, convolution = None, rnn = None, decoder = None, *args, **kwargs):
@@ -45,55 +44,7 @@ class BonitoCTCModel(BaseModel):
         x = self.rnn(x)
         x = self.decoder(x)
         return x
-        
-    
-    def decode(self, p, greedy = True):
-        """Decode the predictions
-         
-        Args:
-            p (tensor): tensor with the predictions with shape [timesteps, batch, classes]
-            greedy (bool): whether to decode using a greedy approach
-        Returns:
-            A (list) with the decoded strings
-        """
-        if greedy:
-            return self.decode_ctc_greedy(p)
-        else:
-            return self.decode_ctc_beam_search(p)
-        
-    def evaluate(self, batch, predictions):
-        """Evaluate the predictions by calculating the accuracy
-        
-        Args:
-            batch (dict): dict with tensor with [batch, len] in key 'y'
-            predictions (list): list of predicted sequences as strings
-        """
-        y = batch['y'].cpu().numpy()
-        y_list = self.dataloader_train.dataset.encoded_array_to_list_strings(y)
-        accs = list()
-        for i, sample in enumerate(y_list):
-            accs.append(alignment_accuracy(sample, predictions[i]))
             
-        return {'metric.accuracy': accs}
-            
-    def calculate_loss(self, y, p):
-        """Calculates the losses for each criterion
-        
-        Args:
-            y (tensor): tensor with labels [batch, len]
-            p (tensor): tensor with predictions [len, batch, channels]
-            
-        Returns:
-            loss (tensor): weighted sum of losses
-            losses (dict): with detached values for each loss, the weighed sum is named
-                global_loss
-        """
-        
-        loss = self.calculate_ctc_loss(y, p)
-        losses = {'loss.global': loss.item(), 'loss.ctc': loss.item()}
-        
-        return loss, losses
-        
         
     def load_default_configuration(self, default_all = False):
         """Sets the default configuration for one or more
