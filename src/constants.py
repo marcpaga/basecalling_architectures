@@ -94,6 +94,11 @@ ALIGNMENT_MISSMATCH_SCORE = 1
 
 # networks
 CTC_BLANK = 0
+CRF_STATE_LEN = 4
+CRF_BIAS = True
+CRF_SCALE = 5.0
+CRF_BLANK_SCORE = 2.0
+CRF_N_BASE = len(BASES)
 
 # evalution
 GLOBAL_ALIGN_FUNCTION = parasail.nw_trace_striped_32
