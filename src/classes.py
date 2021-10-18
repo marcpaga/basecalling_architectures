@@ -111,18 +111,7 @@ class BaseModel(nn.Module):
             A (list) with the decoded strings
         """
         raise NotImplementedError()
-        
-    @abstractmethod
-    def evaluate(self):
-        """Abstract method that takes care of how to calculate any
-        evaluation metric.
-        
-        Evaluation metrics is a dictionary with lists
-        """
-        raise NotImplementedError()
-        return evaluation_metrics
 
-    
     @abstractmethod    
     def calculate_loss(self, y, p):
         """Calculates the losses for each criterion
@@ -374,19 +363,62 @@ class BaseModelCRF(BaseModel):
             losses (dict): with detached values for each loss, the weighed sum is named
                 global_loss
         """
-        
+
         y_len = torch.sum(y != CTC_BLANK, axis = 1).to(self.device)
-        loss = self.criterion['crf'](scores = p, 
-                                     targets = y, 
-                                     target_lengths = y_len, 
-                                     loss_clip = 10, 
-                                     reduction='mean', 
-                                     normalise_scores=True)
+        loss = self.criterions['crf'](scores = p, 
+                                      targets = y, 
+                                      target_lengths = y_len, 
+                                      loss_clip = 10, 
+                                      reduction='mean', 
+                                      normalise_scores=True)
         return loss
 
 class BaseModelS2S(BaseModel):
     pass
     
+class BaseModelImpl(BaseModelCTC, BaseModelCRF):
+
+    def __init__(self, model_type, *args, **kwargs):
+        super(BaseModelImpl, self).__init__(*args, **kwargs)
+
+        valid_model_types = ['ctc', 'crf']
+        if model_type not in valid_model_types:
+            raise ValueError('Given model_type: ' + str(model_type) + ' is not valid. Valid options are: ' + str(valid_model_types))
+        self.model_type = model_type
+
+    def decode(self, p, greedy = True):
+        """Decode the predictions
+         
+        Args:
+            p (tensor): tensor with the predictions with shape [timesteps, batch, classes]
+            greedy (bool): whether to decode using a greedy approach
+        Returns:
+            A (list) with the decoded strings
+        """
+        
+        if self.model_type == 'ctc':
+            return BaseModelCTC.decode(self, p, greedy)
+        if self.model_type == 'crf':
+            return BaseModelCRF.decode(self, p, greedy)
+        
+    def calculate_loss(self, y, p):
+        """Calculates the losses for each criterion
+        
+        Args:
+            y (tensor): tensor with labels [batch, len]
+            p (tensor): tensor with predictions [len, batch, channels]
+            
+        Returns:
+            loss (tensor): weighted sum of losses
+            losses (dict): with detached values for each loss, the weighed sum is named
+                global_loss
+        """
+        
+        if self.model_type == 'ctc':
+            return BaseModelCTC.calculate_loss(self, y, p)
+        if self.model_type == 'crf':
+            return BaseModelCRF.calculate_loss(self, y, p)
+
 class BaseNanoporeDataset(Dataset):
     """Base dataset class that contains Nanopore data
     
