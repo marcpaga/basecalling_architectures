@@ -62,7 +62,7 @@ class SACall(BaseModelImpl):
         d_model = 256
         kernel = 3
         maxpooling_stride = 2 
-        dropout = 0
+        dropout = 0.1
         n_layers = 6
         n_head = 8
         d_ff = 1024
