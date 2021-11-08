@@ -6,7 +6,8 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseModelImpl
 from torch import nn
-from layers import CausalCallConvBlock, BonitoLinearCRFDecoder
+from layers.causalcall import CausalCallConvBlock
+from layers.bonito import BonitoLinearCRFDecoder
 from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE , CRF_N_BASE 
 
 class CausalCall(BaseModelImpl):
