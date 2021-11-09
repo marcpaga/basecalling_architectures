@@ -14,7 +14,7 @@ class MultiBranch(nn.Module):
         self.branches = nn.ModuleList(branches)
         self.embed_dim_list = embed_dim_list
 
-    def forward(self, query, key, value, key_padding_mask=None, incremental_state=None):
+    def forward(self, query, key, value, key_padding_mask=None):
         '''
         :param query/key/value:[batch,seq_len,emb_dim]
         :param key_padding_mask:[batch,1,seq_len]
@@ -28,7 +28,7 @@ class MultiBranch(nn.Module):
         for idx, embed_dim in enumerate(self.embed_dim_list):
             branch = self.branches[idx]
 
-            q = query[...,start:start+embed_dim]
+            q = query[..., start:start+embed_dim]
             # if key is not None:
             #     assert value is not None
             k, v = key[..., start:start+embed_dim], value[..., start:start+embed_dim]
@@ -43,7 +43,7 @@ class MultiBranch(nn.Module):
                     # print('mask:', mask.transpose(-1,-2))
                     q = q.masked_fill(mask.transpose(-1,-2), 0)  #pad need change
                     q = q.transpose(0,1) #[seq_len,batch,emb_dim]
-                x = branch(q.contiguous(), incremental_state=incremental_state) #need change unfold
+                x = branch(q.contiguous()) #need change unfold
                 x = x.transpose(0,1) #[batch,seq_len,emb_dim]
             out.append(x)
 
@@ -69,34 +69,6 @@ class FFN(nn.Module):
         x = self.dropout_1(self.relu(self.w_1(self.layer_norm(x))))
         output = self.w_2(x) 
         return output + residual
-
-INCREMENTAL_STATE_INSTANCE_ID = defaultdict(lambda: 0)
-
-def _get_full_incremental_state_key(module_instance, key):
-    module_name = module_instance.__class__.__name__
-
-    # assign a unique ID to each module instance, so that incremental state is
-    # not shared across module instances
-    if not hasattr(module_instance, '_fairseq_instance_id'):
-        INCREMENTAL_STATE_INSTANCE_ID[module_name] += 1
-        module_instance._fairseq_instance_id = INCREMENTAL_STATE_INSTANCE_ID[module_name]
-
-    return '{}.{}.{}'.format(module_name, module_instance._fairseq_instance_id, key)
-
-
-def get_incremental_state(module, incremental_state, key):
-    """Helper for getting incremental state for an nn.Module."""
-    full_key = _get_full_incremental_state_key(module, key)
-    if incremental_state is None or full_key not in incremental_state:
-        return None
-    return incremental_state[full_key]
-
-
-def set_incremental_state(module, incremental_state, key, value):
-    """Helper for setting incremental state for an nn.Module."""
-    if incremental_state is not None:
-        full_key = _get_full_incremental_state_key(module, key)
-        incremental_state[full_key] = value
 
 class DynamicConv1dTBC(nn.Module):
     '''Dynamic lightweight convolution taking T x B x C inputs
@@ -165,7 +137,7 @@ class DynamicConv1dTBC(nn.Module):
         if self.conv_bias is not None:
             nn.init.constant_(self.conv_bias, 0.)
 
-    def forward(self, x, incremental_state=None, query=None, unfold=None):
+    def forward(self, x):
         '''Assuming the input, x, of the shape T x B x C and producing an output in the shape T x B x C
         args:
             x: Input of shape T x B x C, i.e. (timesteps, batch_size, input_size)
@@ -179,16 +151,13 @@ class DynamicConv1dTBC(nn.Module):
             if self.act is not None:
                 x = self.act(x)
 
-        unfold = x.size(0) > 512 if unfold is None else unfold  # use unfold mode as default for long sequence to save memory
-        unfold = unfold or (incremental_state is not None)
-        assert query is None or not self.in_proj
-
-        if query is None:
-            query = x
+        unfold = x.size(0) > 512
+        query = x
+        
         if unfold:
-            output = self._forward_unfolded(x, incremental_state, query)
+            output = self._forward_unfolded(x, query)
         else:
-            output = self._forward_expanded(x, incremental_state, query)
+            output = self._forward_expanded(x, query)
 
         if self.conv_bias is not None:
             output = output + self.conv_bias.view(1, 1, -1)
@@ -196,7 +165,7 @@ class DynamicConv1dTBC(nn.Module):
             output = self.linear2(output)
         return output
 
-    def _forward_unfolded(self, x, incremental_state, query):
+    def _forward_unfolded(self, x, query):
         '''The conventional implementation of convolutions.
         Unfolding the input by having a window shifting to the right.'''
         T, B, C = x.size()
@@ -212,32 +181,19 @@ class DynamicConv1dTBC(nn.Module):
             weight = self.weight_linear(query).view(T*B*H, -1)
 
         # renorm_padding is only implemented in _forward_expanded
-        assert not self.renorm_padding or incremental_state is not None
+        assert not self.renorm_padding  is not None
 
-        if incremental_state is not None:
-            input_buffer = self._get_input_buffer(incremental_state)
-            if input_buffer is None:
-                input_buffer = x.new()
-            x_unfold = torch.cat([input_buffer, x.unsqueeze(3)], dim=3)
-            if self.kernel_size > 1:
-                self._set_input_buffer(incremental_state, x_unfold[:, :, :, -self.kernel_size+1:])
-            x_unfold = x_unfold.view(T*B*H, R, -1)
-        else:
-            padding_l = self.padding_l
-            if K > T and padding_l == K-1:
-                weight = weight.narrow(1, K-T, T)
-                K, padding_l = T, T-1
-            # unfold the input: T x B x C --> T' x B x C x K
-            x_unfold = self.unfold1d(x, K, padding_l, 0)
-            x_unfold = x_unfold.view(T*B*H, R, K)
+        padding_l = self.padding_l
+        if K > T and padding_l == K-1:
+            weight = weight.narrow(1, K-T, T)
+            K, padding_l = T, T-1
+        # unfold the input: T x B x C --> T' x B x C x K
+        x_unfold = self.unfold1d(x, K, padding_l, 0)
+        x_unfold = x_unfold.view(T*B*H, R, K)
 
         if self.weight_softmax and not self.renorm_padding:
             weight = F.softmax(weight, dim=1)
         weight = weight.narrow(1, 0, K)
-
-        if incremental_state is not None:
-            weight = weight[:, -x_unfold.size(2):]
-            K = weight.size(1)
 
         if self.weight_softmax and self.renorm_padding:
             weight = F.softmax(weight, dim=1)
@@ -248,7 +204,7 @@ class DynamicConv1dTBC(nn.Module):
         output = output.view(T, B, C)
         return output
 
-    def _forward_expanded(self, x, incremental_stat, query):
+    def _forward_expanded(self, x, query):
         '''Turn the convolution filters into band matrices and do matrix multiplication.
         This is faster when the sequence is short, but less memory efficient.
         This is not used in the decoder during inference.
@@ -294,31 +250,6 @@ class DynamicConv1dTBC(nn.Module):
         output = output.transpose(0, 1).contiguous().view(T, B, C)
         return output
 
-    def reorder_incremental_state(self, incremental_state, new_order):
-        input_buffer = self._get_input_buffer(incremental_state)
-        if input_buffer is not None:
-            input_buffer = input_buffer.index_select(1, new_order)
-            self._set_input_buffer(incremental_state, input_buffer)
-
-    def _get_input_buffer(self, incremental_state):
-        return get_incremental_state(self, incremental_state, 'input_buffer')
-
-    def _set_input_buffer(self, incremental_state, new_buffer):
-        return set_incremental_state(self, incremental_state, 'input_buffer', new_buffer)
-
-    def extra_repr(self):
-        s = '{}, kernel_size={}, padding_l={}, num_heads={}, weight_softmax={}, conv_bias={}, renorm_padding={}, in_proj={}'.format(
-            self.input_size, self.kernel_size, self.padding_l,
-            self.num_heads, self.weight_softmax, self.conv_bias is not None, self.renorm_padding,
-            self.in_proj,
-                                                 )
-
-        if self.query_size != self.input_size:
-            s += ', query_size={}'.format(self.query_size)
-        if self.weight_dropout > 0.:
-            s += ', weight_dropout={}'.format(self.weight_dropout)
-        return s
-
     def unfold1d(self, x, kernel_size, padding_l, pad_value=0):
         '''unfold T x B x C to T x B x C x K'''
         if kernel_size > 1:
@@ -332,7 +263,7 @@ class DynamicConv1dTBC(nn.Module):
 
 class CATCallerEncoderLayer(nn.Module):
 
-    def __init__(self, d_model, d_ff, kernel_size, num_heads = 4, channels = 256, dropout = 0.1, weight_softmax = True, weight_dropout = 0.1, with_linear = True):
+    def __init__(self, d_model, d_ff, kernel_size, num_heads = 4, channels = 256, dropout = 0.1, weight_softmax = True, weight_dropout = 0.1, with_linear = True, glu = True):
         super(CATCallerEncoderLayer, self).__init__()
 
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
@@ -348,6 +279,7 @@ class CATCallerEncoderLayer(nn.Module):
                 weight_dropout= weight_dropout, 
                 num_heads = num_heads, 
                 with_linear = with_linear,
+                glu = glu,
             ),
         ]
         self.slf_attn = MultiBranch(layers, channels)

@@ -120,7 +120,8 @@ class CATCaller(BaseModelImpl):
                 dropout = dropout, 
                 weight_softmax = weight_softmax, 
                 weight_dropout = weight_dropout, 
-                with_linear = with_linear
+                with_linear = with_linear,
+                glu = glu,
             ) for i in range(num_encoder_layers)])
 
 
