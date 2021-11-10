@@ -6,11 +6,12 @@ https://github.com/nanoporetech/bonito
 
 import os
 import sys
+import torch
 from torch import nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseModelImpl
-from layers import PositionalEncoding
+from layers.layers import PositionalEncoding
 from layers.bonito import BonitoLinearCRFDecoder
 from layers.catcaller import CATCallerEncoderLayer
 from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE , CRF_N_BASE 
@@ -44,11 +45,28 @@ class CATCaller(BaseModelImpl):
         Args:
             x (tensor) : [batch, channels (1), len]
         """
-        
+
+        signal_lengths = torch.full((x.shape[0],), x.shape[2], dtype = float, device = self.device)
+        max_len = x.size(1)
+        max_len = int(((max_len + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) / self.stride + 1))
+        max_len = int(((max_len + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) / self.stride + 1))
+        new_signal_lengths = ((signal_lengths + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) / self.stride + 1).int()
+        new_signal_lengths = ((new_signal_lengths + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) / self.stride + 1).int()
+
+        src_mask = torch.tensor([[0] * v.item() + [1] * (max_len - v.item()) for v in new_signal_lengths],
+                                dtype=torch.uint8).unsqueeze(-2).to(self.device)
+        src_mask = src_mask.squeeze(1)
+
+
         x = self.convolution(x)
         x = x.permute(2, 0, 1) # [len, batch, channels]
         x = self.pe(x)
-        x = self.encoder(x)
+        x = x.permute(1, 0, 2) # [batch, len, channels]
+
+        for encoder_layer in self.encoder:
+            x = encoder_layer(x, src_mask)
+
+        x = x.permute(1, 0, 2) # [len, batch, channels]
         x = self.decoder(x)
         
         return x
@@ -63,7 +81,6 @@ class CATCaller(BaseModelImpl):
         
         d_model = 512
         d_ff = 512
-        #n_head = 8
         dropout = 0.1
         padding = 1
         kernel = 3
@@ -71,13 +88,18 @@ class CATCaller(BaseModelImpl):
         dilation = 1
 
         num_encoder_layers = 6
-        embed_dims = 256
+        embed_dims = 512
         heads = 4
         kernel_size = [3, 7, 15, 31, 31, 31]
         weight_softmax = True
         weight_dropout = 0.1
         with_linear = True
         glu = True
+
+        self.padding = padding
+        self.kernel_size = kernel
+        self.stride = stride
+        self.dilation = dilation
 
         if self.convolution is None or default_all:
             self.convolution = nn.Sequential(
@@ -123,7 +145,6 @@ class CATCaller(BaseModelImpl):
                 with_linear = with_linear,
                 glu = glu,
             ) for i in range(num_encoder_layers)])
-
 
         if self.decoder is None or default_all:
             if self.model_type == 'ctc':

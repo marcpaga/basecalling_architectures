@@ -21,6 +21,7 @@ class MultiBranch(nn.Module):
         :return:
         '''
         _, _, embed_size = query.size()
+
         assert sum(self.embed_dim_list) == embed_size
         out = []
         attn = None
@@ -35,7 +36,7 @@ class MultiBranch(nn.Module):
             start += embed_dim
 
             if isinstance(branch, torch.nn.MultiheadAttention):  #multiattention forward
-                x, attn = branch(query=q, key=k, value=v, mask=key_padding_mask)
+                x, attn = branch(query=q, key=k, value=v, key_padding_mask=key_padding_mask)
             else:
                 mask = key_padding_mask
                 if mask is not None: #mask[batch,1,seq_len]
@@ -282,7 +283,7 @@ class CATCallerEncoderLayer(nn.Module):
                 glu = glu,
             ),
         ]
-        self.slf_attn = MultiBranch(layers, channels)
+        self.slf_attn = MultiBranch(layers, [channels])
         self.norm_dropout = nn.Dropout(dropout)
         self.ffn = FFN(d_model, d_ff)
 
@@ -294,13 +295,11 @@ class CATCallerEncoderLayer(nn.Module):
         :return:
         '''
 
-        #sublayer1 MHSA
         residual = x
-        input_norm = self.layer_norm(x)
-        enc_out, enc_self_attn = self.slf_attn(query=input_norm, key=input_norm, value=input_norm, key_padding_mask=x_mask.bool())  #change parameters for MultiBranch forward
+        input_norm = self.layer_norm(x) # [B, L, C]
+        input_norm = input_norm.permute(1, 0, 2) # [L, B, C]
+        enc_out, enc_self_attn = self.slf_attn(query=input_norm, key=input_norm, value=input_norm, key_padding_mask=x_mask.bool()) 
+        enc_out = enc_out.permute(1, 0, 2) # [B, L, C]
         enc_out = residual + self.norm_dropout(enc_out)
-
-        #sublayer2 FFN
         enc_out = self.ffn(enc_out)
-
-        return enc_out, enc_self_attn
+        return enc_out

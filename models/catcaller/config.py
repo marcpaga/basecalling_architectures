@@ -5,7 +5,7 @@ import sys
 import torch
 from torch.utils.data import DataLoader
 
-from model import SACall as Model
+from model import CATCaller as Model
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseNanoporeDataset
@@ -13,9 +13,9 @@ from optimizers import RAdam
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model_type = 'crf' # ctc or crf
+model_type = 'ctc' # ctc or crf
 model_name = '500_cnv3_rnn5' + '_' + model_type
-output_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/sacall'
+output_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/catcaller'
 
 ## TRAIN CONFIGURATION #############################################
 num_epochs = 3

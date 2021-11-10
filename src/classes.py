@@ -14,7 +14,7 @@ from read import read_fast5
 from normalization import normalize_signal_from_read_data
 from constants import CTC_BLANK, BASES_CRF
 from evaluation import alignment_accuracy
-import layers
+from layers.bonito import CTC_CRF
 
 class BaseModel(nn.Module):
     """Abstract class for basecaller models
@@ -300,7 +300,7 @@ class BaseModelCRF(BaseModel):
 
         self.alphabet = alphabet
         self.state_len = alphabet
-        self.seqdist = layers.CTC_CRF(state_len = state_len, alphabet = alphabet)
+        self.seqdist = CTC_CRF(state_len = state_len, alphabet = alphabet)
         self.criterions = {'crf': self.seqdist.ctc_loss}
 
         
