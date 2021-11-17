@@ -100,6 +100,11 @@ CRF_SCALE = 5.0
 CRF_BLANK_SCORE = 2.0
 CRF_N_BASE = len(BASES)
 
+# Seq2Seq 
+S2S_PAD = 0
+S2S_SOS = 1
+S2S_EOS = 2
+
 # evalution
 GLOBAL_ALIGN_FUNCTION = parasail.nw_trace_striped_32
 LOCAL_ALIGN_FUNCTION = parasail.sw_trace_striped_32
