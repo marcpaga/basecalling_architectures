@@ -40,8 +40,7 @@ def safe_cumprod(x: torch.Tensor,
 
     tiny = torch.finfo(x.dtype).tiny
 
-    return torch.exp(torch.cumsum(torch.log(torch.clamp(x, tiny, 1)),
-                                  *args, **kwargs))
+    return torch.exp(torch.cumsum(torch.log(torch.clamp(x, tiny, 1)), *args, **kwargs))
 
 def monotonic_attention(p_choose_i: torch.Tensor,
                         previous_attention: torch.Tensor,
@@ -94,7 +93,7 @@ def monotonic_attention(p_choose_i: torch.Tensor,
 
     if mode == "recursive":
         # Use .shape[0] when it's not None, or fall back on symbolic shape
-        batch_size = p_choose_i.shape[0]
+        batch_size = previous_attention.shape[0]
         # Compute [1, 1 - p_choose_i[0], 1 - p_choose_i[1], ...,
         # 1 - p_choose_i[-2]]
         shifted_1mp_choose_i = torch.cat((p_choose_i.new_ones(batch_size, 1),
@@ -103,24 +102,22 @@ def monotonic_attention(p_choose_i: torch.Tensor,
         # Compute attention distribution recursively as
         # q[i] = (1 - p_choose_i[i - 1])*q[i - 1] + previous_attention[i]
         # attention[i] = p_choose_i[i]*q[i]
-
         def f(x, yz):
             return torch.reshape(yz[0] * x + yz[1], (batch_size,))
 
-        x_tmp = f(torch.zeros((batch_size,)), torch.transpose(
-            shifted_1mp_choose_i, 0, 1))
+        x_tmp = f(torch.zeros((batch_size,), device = previous_attention.device), torch.transpose(shifted_1mp_choose_i, 0, 1))
         x_tmp = f(x_tmp, torch.transpose(previous_attention, 0, 1))
-        attention = p_choose_i * torch.transpose(x_tmp, 0, 1)
+
+        attention = p_choose_i * x_tmp.unsqueeze(1)
+    
     elif mode == "parallel":
         batch_size = p_choose_i.shape[0]
-        shifted_1mp_choose_i = torch.cat((p_choose_i.new_ones(batch_size, 1),
-                                          1 - p_choose_i[:, :-1]), 1)
+        shifted_1mp_choose_i = torch.cat((p_choose_i.new_ones(batch_size, 1), 1 - p_choose_i[:, :-1]), 1)
         # safe_cumprod computes cumprod in logspace with numeric checks
         cumprod_1mp_choose_i = safe_cumprod(shifted_1mp_choose_i, dim=1)
         # Compute recurrence relation solution
-        attention = p_choose_i * cumprod_1mp_choose_i * torch.cumsum(
-            previous_attention / cumprod_1mp_choose_i.clamp(min=1e-10, max=1.),
-            dim=1)
+        attention = p_choose_i * cumprod_1mp_choose_i * torch.cumsum(previous_attention / cumprod_1mp_choose_i.clamp(min=1e-10, max=1.), dim=1)
+    
     elif mode == "hard":
         # Remove any probabilities before the index chosen last time step
         p_choose_i *= torch.cumsum(previous_attention, dim=1)
@@ -130,8 +127,7 @@ def monotonic_attention(p_choose_i: torch.Tensor,
         # cumprod(1 - p_choose_i, exclusive=True) = [1, 1, 1, 1, 0, 0, 0, 0]
         # Product of above: [0, 0, 0, 1, 0, 0, 0, 0]
         batch_size = p_choose_i.shape[0]
-        shifted_1mp_choose_i = torch.cat((p_choose_i.new_ones(batch_size, 1),
-                                          1 - p_choose_i[:, :-1]), 1)
+        shifted_1mp_choose_i = torch.cat((p_choose_i.new_ones(batch_size, 1), 1 - p_choose_i[:, :-1]), 1)
         attention = p_choose_i * torch.cumprod(shifted_1mp_choose_i, dim=1)
     else:
         raise ValueError("mode must be 'recursive', 'parallel', or 'hard'.")
@@ -212,10 +208,19 @@ class LuongAttention(nn.Module):
         return torch.sum(hidden * energy, dim=2)
 
     def concat_score(self, hidden, encoder_output):
-        energy = self.attn(torch.cat((hidden.expand(encoder_output.size(0), -1, -1), encoder_output), 2)).tanh()
+        energy = self.attn(torch.cat((hidden.expand(encoder_output.shape[0], -1, -1), encoder_output), 2)).tanh()
         return torch.sum(self.v * energy, dim=2)
 
     def forward(self, hidden, encoder_outputs, memory = None):
+        """
+        Args:
+            hidden (tensor): [1, batch, channels]
+            encoder_outputs (tensor): [len, batch, channels]
+            memory (tensor): [len, batch]
+
+        Returns:
+            (tensor): [len, batch]
+        """
         # Calculate the attention weights (energies) based on the given method
         if self.method == 'general':
             attn_energies = self.general_score(hidden, encoder_outputs)
@@ -224,17 +229,15 @@ class LuongAttention(nn.Module):
         elif self.method == 'dot':
             attn_energies = self.dot_score(hidden, encoder_outputs)
 
-        # Transpose max_length and batch_size dimensions
-        attn_energies = attn_energies.t()
-
         if self.monotonic:
             if memory is None:
                 raise ValueError("Memory cannot be None with monotonic attention")
             # Monotonic attention
-            return _monotonic_probability_fn(attn_energies, memory, self.sigmoid_noise, self.mode).unsqueeze(1)
+            return _monotonic_probability_fn(attn_energies.t(), memory.t(), self.sigmoid_noise, self.monotonic_mode).t()
         else:
+
             # Normal attention
-            # Return the softmax normalized probability scores (with added dimension)
-            return F.softmax(attn_energies, dim=1).unsqueeze(1)
+            # Return the softmax normalized probability scores
+            return F.softmax(attn_energies, dim=0)
 
 
