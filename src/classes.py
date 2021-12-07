@@ -471,24 +471,28 @@ class BaseModelS2S(BaseModel):
 
         x = self.cnn(x)
         x = x.permute(2, 0, 1)
-        enc_out, hidden = self.encoder(x)
+        enc_out, hidden = self.encoder(x) 
+
+        # get the relevant hidden states
+        hidden = self.concat_hiddens(hidden)
+
         if not isinstance(hidden, tuple):
             hidden = (hidden)
 
         # keep track of which samples have predicted eos
-        ended_sequences = torch.ones(input.shape[0], device = self.device)
+        ended_sequences = torch.ones(enc_out.shape[1], device = self.device)
         encoder_timesteps = enc_out.shape[0]
 
         ## [len, batch, classes]
-        outputs = torch.zeros(encoder_timesteps, x.shape[1], self.num_classes).to(self.device)
+        outputs = torch.zeros(encoder_timesteps, enc_out.shape[1], self.num_classes).to(self.device)
         outputs[1:, :, self.token_pad] = 1 # fill with padding predictions
         outputs[0, :, self.token_sos] = 1 # first token is always SOS
 
         # first input is the SOS token
-        dec_in = torch.full((x.shape[1], ), fill_value = self.token_sos, device = self.device)
+        dec_in = torch.full((enc_out.shape[1], ), fill_value = self.token_sos, device = self.device)
         # initial attention is all zeros except first timepoint so that it can look
         # at all the timepoints
-        last_attention = torch.zeros(encoder_timesteps, x.shape[1], device = self.device)
+        last_attention = torch.zeros((encoder_timesteps, enc_out.shape[1]), device = self.device)
         last_attention[0, :] = 1
 
         for t in range(1, encoder_timesteps):
@@ -526,6 +530,30 @@ class BaseModelS2S(BaseModel):
     def decode_beamsearch(self):
         pass
 
+    def concat_hiddens(self, hidden):
+        """Concatenates the hidden states output of an RNN
+
+        The output of the RNN in the encoder outputs the last hidden states
+        of all the RNN layers. We only want the last (or two last if bidirectional)
+        This function extracts the relevant hidden states, and cell states
+        for LSTM, to be used as input for the decoder.
+
+        Args:
+            hidden (tuple, tensor): with shape [len, batch, hidden]
+
+        Returns:
+            Same shaped tensor with last two hidden states concatenated in 
+            the hidden dimension
+        """
+
+
+        if isinstance(hidden, tuple):
+            return (self.concat_hiddens(hidden[0]), self.concat_hiddens(hidden[1]))
+
+        if self.encoder.bidirectional:
+            return torch.cat([hidden[-1, :, :], hidden[-2, :, :]], dim = -1).unsqueeze(0)
+        else:
+            return hidden[-1, :, :].unsqueeze(0)
 
 class BaseNanoporeDataset(Dataset):
     """Base dataset class that contains Nanopore data
