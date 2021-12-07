@@ -35,14 +35,26 @@ class PositionalEncoding(nn.Module):
 
 class DecoderS2S(nn.Module):
 
-    def __init__(self, embedding, rnn, attention, out_linear, upstream_attention = True):
+    def __init__(self, embedding, rnn, attention, out_linear, encoder_hidden, upstream_attention = True):
         """Seq2Seq decoder
+
+        The rnn should have as many hidden dimensions as the output dimensions of
+        the encoder rnn, otherwise you cannot pass the hidden states.
+
+        Upstream attention: attention is applied between the encoder outputs and
+            the last hidden state. Then this attention is concatenated to the 
+            embeddings and fed as input for the decoder RNN.
+
+        Downstream attention: attention is applied between the output of the 
+            decoder and the encoder outputs. Then the output of the decoder
+            is concatenated with the attention and fed to the output linear layer.
 
         Args:
             embedding (nn.Module): embedding module for the input of the previous token
             rnn (nn.Module): RNN decoder layer
             attention (nn.Module): attention module
             out_linear (nn.Module): linear layer that has output classes as output channels
+            encoder_hidden (int): number of hidden dimensions of the encoder, consider hidden*2 if bidirectional
             upstream_attention (bool): whether the attention is applied before the decoder rnn
         """
         super(DecoderS2S, self).__init__()
@@ -51,24 +63,29 @@ class DecoderS2S(nn.Module):
         self.rnn = rnn
         self.attention = attention
         self.out_linear = out_linear
+        self.encoder_hidden = encoder_hidden
         self.upstream_attention = upstream_attention
 
         if self.upstream_attention:
-            self.concat = nn.Linear()
+            self.concat = nn.Linear(self.embedding.embedding_dim + self.encoder_hidden, self.rnn.input_size)
         else:
-            self.concat = nn.Linear()
+            self.concat = nn.Linear(self.rnn.hidden_size * 2, self.out_linear.in_features)
         
 
-    def forward(self, inputs, hidden, encoder_outputs, last_attention):
+    def forward(self, inputs, hidden, encoder_outputs, last_attention = None):
         """
         Args:
-            inputs (tensor): [batch, len] with integers to be embedded
-            hidden (tensor or tuple): [len (1), batch, channels]
+            inputs (tensor): [batch, len (1)] with integers to be embedded
+            hidden (tuple): [len (1), batch, channels]
             encoder_outputs (tuple): [len, batch, channels]
             last_attention (tensor): [len, batch]
 
+        hidden should always be a tuple and it can come from LSTM or GRU
+
         Returns:
             (tensor): [len (1), batch, output_channels] with logsoftmax at last dim
+            hidden (tuple, tensor): [len (1), batch, hidden]
+            attention: [len, batch]
         """
 
         if self.upstream_attention:
@@ -81,34 +98,49 @@ class DecoderS2S(nn.Module):
         """
         
         embedded = self.embedding(inputs)
-        attn_weights = self.attention(hidden, encoder_outputs, last_attention)
+        embedded = embedded.unsqueeze(2) # [batch, hidden, len]
 
-        context = attn_weights.bmm(encoder_outputs.transpose(0, 1))
-        concat_input = torch.cat((embedded, context), 1)
+        attn_weights = self.attention(hidden[0], encoder_outputs, last_attention) # [len, batch]
+        attn_weights = attn_weights.permute(1, 0).unsqueeze(2) # [batch, len, 1]
+        encoder_outputs = encoder_outputs.permute(1, 2, 0) # [batch, hidden, len]
+
+        context = torch.bmm(encoder_outputs, attn_weights)
+        concat_input = torch.cat((embedded, context), dim = 1).squeeze(2)
         rnn_input = torch.tanh(self.concat(concat_input))
-        rnn_output, hidden = self.rnn(rnn_input, hidden)
+
+        rnn_input = rnn_input.unsqueeze(0) # [len, batch, hidden]
+
+        if len(hidden) > 1:
+            rnn_output, hidden = self.rnn(rnn_input, hidden)
+        else:
+            rnn_output, hidden = self.rnn(rnn_input, hidden[0])
 
         output = F.log_softmax(self.out_linear(rnn_output), dim = -1)
 
-        return output
+        return output, hidden, attn_weights.squeeze(2).permute(1, 0)
 
     def forward_downstream(self, inputs, hidden, encoder_outputs, last_attention):
         """See `forward` for args
         """
         
         embedded = self.embedding(inputs)
-        rnn_output, hidden = self.rnn(embedded, hidden)
+        embedded = embedded.unsqueeze(2).permute(2, 0, 1) # [batch, hidden, len]
+
+        if len(hidden) > 1:
+            rnn_output, hidden = self.rnn(embedded, hidden)
+        else:
+            rnn_output, hidden = self.rnn(embedded, hidden[0])
         
         attn_weights = self.attention(rnn_output, encoder_outputs, last_attention)
-
-        # multiply attention weights to encoder outputs
-        context = attn_weights.bmm(encoder_outputs.transpose(0, 1))
-        rnn_output = rnn_output.squeeze(0)
-        context = context.squeeze(1)
+        attn_weights = attn_weights.permute(1, 0).unsqueeze(2) # [batch, len, 1]
+        encoder_outputs = encoder_outputs.permute(1, 2, 0) # [batch, hidden, len]
         
-        concat_input = torch.cat((rnn_output, context), 1)
+        context = torch.bmm(encoder_outputs, attn_weights)
+        context = context.permute(2, 0, 1)
+
+        concat_input = torch.cat((rnn_output, context), dim = 2)
         concat_output = torch.tanh(self.concat(concat_input))
-        # Predict next word using Luong eq. 6
+        
         output = F.log_softmax(self.out_linear(concat_output), dim = -1)
 
-        return output
+        return output, hidden, attn_weights.squeeze(2).permute(1, 0)

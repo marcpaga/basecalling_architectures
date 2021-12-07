@@ -104,6 +104,7 @@ CRF_N_BASE = len(BASES)
 S2S_PAD = 0
 S2S_SOS = 1
 S2S_EOS = 2
+S2S_OUTPUT_CLASSES = len(BASES) + 3 # canonical bases + tokens
 
 # evalution
 GLOBAL_ALIGN_FUNCTION = parasail.nw_trace_striped_32
