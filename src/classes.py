@@ -474,7 +474,7 @@ class BaseModelS2S(BaseModel):
         enc_out, hidden = self.encoder(x) 
 
         # get the relevant hidden states
-        hidden = self.concat_hiddens(hidden)
+        hidden = self._concat_hiddens(hidden)
 
         if not isinstance(hidden, tuple):
             hidden = (hidden)
@@ -497,25 +497,88 @@ class BaseModelS2S(BaseModel):
 
         for t in range(1, encoder_timesteps):
 
-            dec_out, hidden, last_attention = self.decoder(dec_in, enc_out, last_attention)
+            dec_out, hidden, last_attention = self.decoder(dec_in, hidden, enc_out, last_attention)
             outputs[t, :, :] = dec_out
 
             teacher_force = random.random() < forced_teaching
             #if teacher forcing, use actual next token as next input
             #if not, use predicted tokens                
             if teacher_force:
-                dec_in = y[t, :, :]
+                dec_in = y[:, t]
                 dec_in = dec_in.unsqueeze(0)
             else:   
                 dec_in = dec_out.argmax(2)
                 
             ended_sequences[torch.where(dec_out.argmax(2).squeeze(0) == self.token_eos)[0]] = 0
             if torch.sum(ended_sequences) == 0:
-                break            
+                break    
 
+        return outputs        
 
-    def calculate_loss(self):
-        pass        
+    def train_step(self, batch):
+        """Train a step with a batch of data
+        
+        Args:
+            batch (dict): dict with keys 'x' (batch, len) 
+                                         'y' (batch, len)
+        """
+        
+        self.train()
+        x = batch['x'].to(self.device)
+        x = x.unsqueeze(1) # add channels dimension
+        y = batch['y'].to(self.device)
+        y = y.to(int)
+        p = self.forward(x, y, self.scheduled_sampling) # forward through the network
+        
+        loss, losses = self.calculate_loss(y, p)
+        self.optimize(loss)
+        
+        return losses, p
+    
+    def validation_step(self, batch):
+        """Predicts a single batch of data
+        Args:
+            batch (dict): dict filled with tensors of input and output
+        """
+        
+        self.eval()
+        with torch.no_grad():
+            x = batch['x'].to(self.device)
+            x = x.unsqueeze(1) # add channels dimension
+            y = batch['y'].to(self.device)
+            y = y.to(int)
+            p = self.forward(x, None, 0.0) # forward through the network
+            
+            _, losses = self.calculate_loss(y, p)
+            
+        return losses, p
+    
+    def predict_step(self, batch):
+        """
+        Args:
+            batch (dict) dict fill with tensor just for prediction
+        """
+        self.eval()
+        with torch.no_grad():
+            x = batch['x'].to(self.device)
+            x = x.unsqueeze(1)
+            p = self.forward(x, None, 0.0)
+            
+        return p
+
+    def calculate_loss(self, y, p):
+        """Calculate CE loss
+
+        Args:
+            y (tensor): shape [batch, len]
+            p (tensor): shape [batch, channels, len]
+        """
+
+        loss = self.criterions['ce'](p, y[:, :p.shape[2]])
+        losses = {'loss.global': loss.item(), 'loss.ce': loss.item()}
+
+        return loss, losses
+     
 
     def decode(self, p, greedy = False):
         
@@ -530,7 +593,7 @@ class BaseModelS2S(BaseModel):
     def decode_beamsearch(self):
         pass
 
-    def concat_hiddens(self, hidden):
+    def _concat_hiddens(self, hidden):
         """Concatenates the hidden states output of an RNN
 
         The output of the RNN in the encoder outputs the last hidden states
@@ -546,7 +609,6 @@ class BaseModelS2S(BaseModel):
             the hidden dimension
         """
 
-
         if isinstance(hidden, tuple):
             return (self.concat_hiddens(hidden[0]), self.concat_hiddens(hidden[1]))
 
@@ -554,6 +616,7 @@ class BaseModelS2S(BaseModel):
             return torch.cat([hidden[-1, :, :], hidden[-2, :, :]], dim = -1).unsqueeze(0)
         else:
             return hidden[-1, :, :].unsqueeze(0)
+
 
 class BaseNanoporeDataset(Dataset):
     """Base dataset class that contains Nanopore data
