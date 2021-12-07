@@ -35,7 +35,7 @@ class PositionalEncoding(nn.Module):
 
 class DecoderS2S(nn.Module):
 
-    def __init__(self, embedding, rnn, attention, out_linear, encoder_hidden, upstream_attention = True):
+    def __init__(self, device, embedding, rnn, attention, out_linear, encoder_hidden, upstream_attention = True):
         """Seq2Seq decoder
 
         The rnn should have as many hidden dimensions as the output dimensions of
@@ -59,6 +59,7 @@ class DecoderS2S(nn.Module):
         """
         super(DecoderS2S, self).__init__()
 
+        self.device = device
         self.embedding = embedding
         self.rnn = rnn
         self.attention = attention
@@ -70,6 +71,9 @@ class DecoderS2S(nn.Module):
             self.concat = nn.Linear(self.embedding.embedding_dim + self.encoder_hidden, self.rnn.input_size)
         else:
             self.concat = nn.Linear(self.rnn.hidden_size * 2, self.out_linear.in_features)
+
+        if self.rnn.bidirectional:
+            raise AttributeError('RNN cannot be bidirectional')
         
 
     def forward(self, inputs, hidden, encoder_outputs, last_attention = None):
@@ -88,6 +92,14 @@ class DecoderS2S(nn.Module):
             attention: [len, batch]
         """
 
+        # for multilayer decoder we have to append 0 for the rest of the layers
+        if hidden[0].shape[0] < self.rnn.num_layers:
+            if len(hidden) == 1:
+                hidden = (torch.cat([hidden[0], torch.zeros((self.rnn.num_layers - 1, hidden[0].shape[1], hidden[0].shape[2]), device = self.device)], dim = 0))
+            else:
+                hidden = (torch.cat([hidden[0], torch.zeros((self.rnn.num_layers - 1, hidden[0].shape[1], hidden[0].shape[2]), device = self.device)], dim = 0), 
+                          torch.cat([hidden[1], torch.zeros((self.rnn.num_layers - 1, hidden[1].shape[1], hidden[1].shape[2]), device = self.device)], dim = 0))
+
         if self.upstream_attention:
             return self.forward_upstream(inputs, hidden, encoder_outputs, last_attention)
         else:
@@ -100,7 +112,10 @@ class DecoderS2S(nn.Module):
         embedded = self.embedding(inputs)
         embedded = embedded.unsqueeze(2) # [batch, hidden, len]
 
-        attn_weights = self.attention(hidden[0], encoder_outputs, last_attention) # [len, batch]
+        # do hidden[0][0].unsqueeze(0) in case it is a multilayer hidden, so we only
+        # want the first one
+        # this works for single layer or multilayer
+        attn_weights = self.attention(hidden[0][0].unsqueeze(0), encoder_outputs, last_attention) # [len, batch]
         attn_weights = attn_weights.permute(1, 0).unsqueeze(2) # [batch, len, 1]
         encoder_outputs = encoder_outputs.permute(1, 2, 0) # [batch, hidden, len]
 
