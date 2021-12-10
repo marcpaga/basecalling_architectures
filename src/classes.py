@@ -24,7 +24,7 @@ class BaseModel(nn.Module):
     """
     
     def __init__(self, device, dataloader_train, dataloader_validation, 
-                 optimizer = None, schedulers = None, criterions = None, clipping_value = 2, use_sam = False):
+                 optimizer = None, schedulers = dict(), criterions = dict(), clipping_value = 2, use_sam = False):
         super(BaseModel, self).__init__()
         
         self.device = device
@@ -419,17 +419,21 @@ class BaseModelImpl(BaseModelCTC, BaseModelCRF):
 class BaseModelS2S(BaseModel):
     
     def __init__(
-        self, cnn, encoder, decoder, scheduled_sampling, 
+        self, 
+        convolution = None, 
+        encoder = None, 
+        decoder = None, 
+        scheduled_sampling = 0, 
         token_sos = S2S_SOS,
         token_eos = S2S_EOS,
         token_pad = S2S_PAD,
         out_classes = S2S_OUTPUT_CLASSES,
-        ):
+        *args, **kwargs):
 
         """Base model for Seq2Seq
 
         Args:
-            cnn (nn.Module): convolution model that is applied before the encoder
+            convolution (nn.Module): convolution model that is applied before the encoder
             encoder (nn.Module): rnn for the encoder
             decoder (nn.Module): s2s decoder with embedding, rnn, attention and linear output
             scheduled_sampling (float): probability of using the correct token during training
@@ -442,9 +446,9 @@ class BaseModelS2S(BaseModel):
         as many times as the amount of timesteps in the output of the encoder.
         """
 
-        super(BaseModelS2S, self).__init__()
+        super(BaseModelS2S, self).__init__(*args, **kwargs)
 
-        self.cnn = cnn
+        self.convolution = convolution
         self.encoder = encoder
         self.decoder = decoder
 
@@ -453,7 +457,7 @@ class BaseModelS2S(BaseModel):
         self.token_pad = token_pad
         self.out_classes = out_classes
 
-        self.criterions['ce'] = nn.NLLLoss(ignore_index = self.token_pad)
+        self.criterions['ce'] = nn.NLLLoss()
         self.scheduled_sampling = scheduled_sampling
 
     def forward(self, x, y = None, forced_teaching = 0):
@@ -464,12 +468,15 @@ class BaseModelS2S(BaseModel):
             y (tensor): tensor with the encoded labels as integers [batch, len]
             forced_teaching (float): float between 0 and 1 that determines
                 the probability of using the true label for a step during decoding
+
+            Returns:
+                tensor with shape
         """
 
         if forced_teaching > 0 and y is None:
             raise ValueError('y must be given if forced_teaching > 0')
 
-        x = self.cnn(x)
+        x = self.convolution(x)
         x = x.permute(2, 0, 1)
         enc_out, hidden = self.encoder(x) 
 
@@ -484,7 +491,7 @@ class BaseModelS2S(BaseModel):
         encoder_timesteps = enc_out.shape[0]
 
         ## [len, batch, classes]
-        outputs = torch.zeros(encoder_timesteps, enc_out.shape[1], self.num_classes).to(self.device)
+        outputs = torch.zeros(encoder_timesteps, enc_out.shape[1], self.out_classes).to(self.device)
         outputs[1:, :, self.token_pad] = 1 # fill with padding predictions
         outputs[0, :, self.token_sos] = 1 # first token is always SOS
 
@@ -504,10 +511,9 @@ class BaseModelS2S(BaseModel):
             #if teacher forcing, use actual next token as next input
             #if not, use predicted tokens                
             if teacher_force:
-                dec_in = y[:, t]
-                dec_in = dec_in.unsqueeze(0)
+                dec_in = y[:, t] # [batch]
             else:   
-                dec_in = dec_out.argmax(2)
+                dec_in = dec_out.argmax(2).squeeze(0) # [batch]
                 
             ended_sequences[torch.where(dec_out.argmax(2).squeeze(0) == self.token_eos)[0]] = 0
             if torch.sum(ended_sequences) == 0:
@@ -530,7 +536,7 @@ class BaseModelS2S(BaseModel):
         y = y.to(int)
         p = self.forward(x, y, self.scheduled_sampling) # forward through the network
         
-        loss, losses = self.calculate_loss(y, p)
+        loss, losses = self.calculate_loss(y, p.permute(1, 2, 0))
         self.optimize(loss)
         
         return losses, p
@@ -549,7 +555,7 @@ class BaseModelS2S(BaseModel):
             y = y.to(int)
             p = self.forward(x, None, 0.0) # forward through the network
             
-            _, losses = self.calculate_loss(y, p)
+            _, losses = self.calculate_loss(y, p.permute(1, 2, 0))
             
         return losses, p
     
@@ -579,19 +585,45 @@ class BaseModelS2S(BaseModel):
 
         return loss, losses
      
-
     def decode(self, p, greedy = False):
-        
+        """Decode the predictions into sequences
+
+        Args:
+            p (tensor): tensor of predictions with shape [timesteps, batch, channels]
+            greedy (bool): whether to use greedy decoding or beam search
+
+        Returns:
+            A `list` with the decoded sequences as strings.
+        """
+
         if greedy:
             return self.decode_greedy(p)
         else:
             return self.decode_beamsearch(p)
 
-    def decode_greedy(self):
-        pass
+    def decode_greedy(self, p):
+        
+        p = p.detach()
+        p = p.permute(1, 0, 2) # [batch, len, channels]
+        p = p.argmax(-1) # get most probable 
+        p = p.cpu().numpy()
+        p = p.astype(str)
+
+        # replace tokens with nothing
+        for k in [self.token_sos, self.token_eos, self.token_pad]:
+            p[p == str(k)] = ''
+        
+        # replace predictions with bases
+        for k, v in self.dataloader_train.dataset.decoding_dict.items():
+            p[p == str(k)] = v
+
+        # join everything
+        decoded_sequences = ["".join(i) for i in p.tolist()]
+
+        return decoded_sequences
 
     def decode_beamsearch(self):
-        pass
+        raise NotImplementedError()
 
     def _concat_hiddens(self, hidden):
         """Concatenates the hidden states output of an RNN
@@ -610,13 +642,12 @@ class BaseModelS2S(BaseModel):
         """
 
         if isinstance(hidden, tuple):
-            return (self.concat_hiddens(hidden[0]), self.concat_hiddens(hidden[1]))
+            return (self._concat_hiddens(hidden[0]), self._concat_hiddens(hidden[1]))
 
         if self.encoder.bidirectional:
             return torch.cat([hidden[-1, :, :], hidden[-2, :, :]], dim = -1).unsqueeze(0)
         else:
             return hidden[-1, :, :].unsqueeze(0)
-
 
 class BaseNanoporeDataset(Dataset):
     """Base dataset class that contains Nanopore data
@@ -636,11 +667,15 @@ class BaseNanoporeDataset(Dataset):
         split (float): fraction of samples for training
         randomizer (bool): whether to randomize the samples order
         seed (int): seed for reproducible randomization
+        s2s (bool): whether to encode for s2s models
+        token_sos (int): value used for encoding start of sequence
+        token_eos (int): value used for encoding end of sequence
+        token_pad (int): value used for padding all the sequences (s2s and not s2s)
     """
 
     def __init__(self, data_dir, decoding_dict, encoding_dict, 
                  split = 0.95, shuffle = True, seed = None,
-                 s2s = False, token_sos = S2S_SOS, token_eos = S2S_EOS, token_padding = S2S_PAD):
+                 s2s = False, token_sos = S2S_SOS, token_eos = S2S_EOS, token_pad = S2S_PAD):
         super(BaseNanoporeDataset, self).__init__()
         
         self.data_dir = data_dir
@@ -670,7 +705,7 @@ class BaseNanoporeDataset(Dataset):
         self.s2s = s2s
         self.token_sos = token_sos
         self.token_eos = token_eos
-        self.token_padding = token_padding
+        self.token_pad = token_pad
 
         self._check()
     
@@ -679,7 +714,6 @@ class BaseNanoporeDataset(Dataset):
         """
         return self.total_num_samples
         
-    
     def __getitem__(self, idx):
         """Get a set of samples by idx
         
@@ -707,9 +741,12 @@ class BaseNanoporeDataset(Dataset):
 
         # check that the encoding dict does not conflict with S2S tokens
         if self.s2s:
-            s2s_tokens = (self.token_eos, self.token_sos, self.token_padding)
+            s2s_tokens = (self.token_eos, self.token_sos, self.token_pad)
             for v in self.encoding_dict.values():
                 assert v not in s2s_tokens
+        else:
+            for v in self.encoding_dict.values():
+                assert v != self.token_pad
 
     def _find_files(self):
         """Finds list of files to read
@@ -720,7 +757,6 @@ class BaseNanoporeDataset(Dataset):
                 l.append(f)
         l = sorted(l)
         return l
-    
     
     def _get_samples_per_file(self):
         """Gets the number of samples per file from the file name
@@ -770,15 +806,13 @@ class BaseNanoporeDataset(Dataset):
                 
         return None
     
-    
     def _get_samplers(self):
         """Add samplers
         """
         self.train_sampler = IdxSampler(self.train_idxs, data_source = self)
         self.validation_sampler = IdxSampler(self.validation_idxs, data_source = self)
         return None
-        
-        
+            
     def load_file_into_memory(self, idx):
         """Loads a file into memory and processes it
         """
@@ -787,12 +821,10 @@ class BaseNanoporeDataset(Dataset):
         y = arr['y']
         return self.process({'x':x, 'y':y})
     
-    
     def get_data(self, data_dict, idx):
         """Slices the data for given indices
         """
         return {'x': data_dict['x'][idx], 'y': data_dict['y'][idx]}
-    
     
     def process(self, data_dict):
         """Processes the data into a ready for training format
@@ -808,19 +840,18 @@ class BaseNanoporeDataset(Dataset):
         data_dict['y'] = y
         return data_dict
     
-    
     def encode(self, y_arr):
         """Encode the labels
         """
         
-        new_y = np.zeros(y_arr.shape, dtype=int)
+        new_y = np.full(y_arr.shape, self.token_pad, dtype=int)
         for k, v in self.encoding_dict.items():
             new_y[y_arr == k] = v
         return new_y
 
     def encode_s2s(self, y_arr):
     
-        new_y = np.full(y_arr.shape, self.token_padding, dtype=int)
+        new_y = np.full(y_arr.shape, self.token_pad, dtype=int)
         # get the length of each sample to add eos token at the end
         sample_len = np.sum(y_arr != '', axis = 1)
         # array with sos_token to append at the begining
@@ -837,7 +868,31 @@ class BaseNanoporeDataset(Dataset):
         new_y = np.concatenate([sos_token, new_y[:, :-1]], axis = 1)
         return new_y
     
-        
+    def encoded_array_to_list_strings(self, y):
+        """Convert an encoded array back to a list of strings
+
+        Args:
+            y (array): with shape [batch, len]
+        """
+
+        y = y.astype(str)
+        if self.s2s:
+            # replace tokens with nothing
+            for k in [self.token_sos, self.token_eos, self.token_pad]:
+                y[y == str(k)] = ''
+        else:
+            y[y == str(self.token_pad)] = ''
+        # replace predictions with bases
+        for k, v in self.decoding_dict.items():
+            y[y == str(k)] = v
+
+        # join everything
+        decoded_sequences = ["".join(i) for i in y.tolist()]
+        return decoded_sequences
+
+
+
+
 class IdxSampler(Sampler):
     """Sampler class to not sample from all the samples
     from a dataset.

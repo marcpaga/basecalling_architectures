@@ -138,8 +138,8 @@ class DecoderS2S(nn.Module):
         """
         
         embedded = self.embedding(inputs)
-        embedded = embedded.unsqueeze(2).permute(2, 0, 1) # [batch, hidden, len]
-
+        embedded = embedded.unsqueeze(2).permute(2, 0, 1) # [len, batch, hidden]
+        
         if len(hidden) > 1:
             rnn_output, hidden = self.rnn(embedded, hidden)
         else:
