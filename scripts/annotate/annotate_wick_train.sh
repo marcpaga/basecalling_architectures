@@ -8,8 +8,8 @@ while read a;
 do    
     spe=$a
     
-    ref="${spe}/read_references.fasta"
-    out="${spe}/segmentation_report.txt"
+    ref="${wick_dir}/${spe}/read_references.fasta"
+    out="${wick_dir}/${spe}/segmentation_report.txt"
     
     if [ -f $out ]; then
         echo 'Skipping'
@@ -17,11 +17,12 @@ do
         IFS='/' read -r -a spename <<< "${spe}"
         spename="${spename[-1]}"
 
-        IFS='_' read -r -a array <<< "${spename}"
-        genome_file="${wick_dir}/genomes/${array[0]}_${array[1]}.fna"
+        IFS='-' read -r -a array <<< "${spename}"
+        genome_file="${wick_dir}/genomes/${array[0]}.fna"
 
         echo "Processing ${spe}"
-        python annotate_wick.py --fast5-path $spe --genome-file $genome_file --reference-file $ref --output-file $out --n-cores $2 --verbose
+        python annotate_wick.py --fast5-path "${wick_dir}/$spe" --genome-file $genome_file --reference-file $ref --output-file $out --n-cores $n_cores --verbose
     fi
+
     
 done < $spe_train_file

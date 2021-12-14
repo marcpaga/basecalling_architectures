@@ -12,14 +12,12 @@ import multiprocessing as mp
 from tombo import tombo_helper as th
 from tombo import tombo_stats as ts
 from tombo import resquiggle as tr
-from tombo.tombo_helper import TomboError
-from tombo._default_parameters import  DNA_SAMP_TYPE, RNA_SAMP_TYPE, MIN_EVENT_TO_SEQ_RATIO, MAX_RAW_CPTS
+from tombo._default_parameters import  DNA_SAMP_TYPE, MIN_EVENT_TO_SEQ_RATIO, MAX_RAW_CPTS
 from collections import namedtuple
 import h5py
 import mappy
-import copy
 
-sys.path.append('../../src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 
 import read
 from normalization import normalize_signal_wrapper
@@ -267,6 +265,10 @@ def main(fast5_path, reference_file, genome_file, output_file, n_cores, verbose 
             alignment = list(aligner.map(str(ref)))[0]
         except IndexError:
             s = file_path + '\t' + 'unknown' + '\t' + 'Failed_to_align' + '\t' + 'NaN' + '\t' + 'NaN' + '\t' + 'NaN' + '\t' + 'NaN'
+            q.put(s)
+            continue
+
+        
         alignment_results = {"r_st":alignment.r_st, 
                              "r_en":alignment.r_en,
                              "strand":alignment.strand,
