@@ -184,11 +184,17 @@ def segment_read(file_path, reference, alignment, q, p):
         q.put(s)
         return file_path, read_id, 'Failed to write'
 
-    s = file_path + '\t' + read_id + '\t' + 'Success' + '\t' + str(st) + '\t' + str(nd) + '\t' + str(strand) + '\t' + str(chrom)
-    q.put(s)
     
-    s = '>' + str(read_id) + '\n' + str("".join(read_data.segmentation['base'].tolist()))
-    p.put(s)
+    
+    try:
+        s = '>' + str(read_id) + '\n' + str(reference[2:-3])
+        p.put(s)
+        s = file_path + '\t' + read_id + '\t' + 'Success' + '\t' + str(st) + '\t' + str(nd) + '\t' + str(strand) + '\t' + str(chrom)
+        q.put(s)
+    except:
+        s = file_path + '\t' + read_id + '\t' + 'Failed_to_fasta' + '\t' + str(st) + '\t' + str(nd) + '\t' + str(strand) + '\t' + str(chrom)
+        q.put(s)
+        return file_path, read_id, 'Failed_to_fasta'
     
     return file_path, read_id, 'Success'
 
