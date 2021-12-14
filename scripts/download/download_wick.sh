@@ -4,150 +4,140 @@ output_dir=$1
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-train_fast5_links="${SCRIPT_DIR}/links_train_wick.txt"
-test_fast5_links="${SCRIPT_DIR}/links_test_wick.txt"
-references_links="${SCRIPT_DIR}/links_references_wick.txt"
-basecalls_links="${SCRIPT_DIR}/links_basecalls_wick.txt"
-genomes_links="${SCRIPT_DIR}/links_general_references.txt"
+train_fast5_links="${SCRIPT_DIR}/links_wick_data_train.txt"
+test_fast5_links="${SCRIPT_DIR}/links_wick_data_test.txt"
 
-while read a b;
-do 
-	link=$a
-	name=$b
-	tar_name="${output_dir}/${name}.tar.gz"
-	dir_name="${output_dir}/${name}"
+basecalls_links="${SCRIPT_DIR}/links_wick_basecalls_test.txt"
+references_links_general="${SCRIPT_DIR}/links_wick_references_general.txt"
+references_links_specific="${SCRIPT_DIR}/links_wick_references_specific.txt"
 
-	if [ -d $dir_name ]
-	then
-		echo  "Skipping: ${name}"
-	else
-		if [ -f $tar_name ]
-		then
-			echo "Unpacking data"
-        	tar -xvzf $tar_name
-		else
-			echo "Downloading: ${name}"
-        	wget $link -O $tar_name
-			echo "Unpacking data"
-            tar -xvzf $tar_name
-		fi
-	fi
+mkdir -p $output_dir
+
+# make a tmp dir for all the downloads so we can delete the dir afterwards
+tmp_dir="${output_dir}/tmp"
+mkdir -p $tmp_dir
+
+# download the reference and unpack it
+genomes_dir="${output_dir}/genomes"
+mkdir -p $genomes_dir
+
+# # download general genomes
+# while IFS= read -r line || [[ -n $line  ]]; do
+
+#     files=($line)
+#     link=${files[0]}
+#     spe=${files[1]}
+
+#     if [ ! -f "${tmp_dir}/${spe}.fna.gz" ]
+#     then
+#         echo "Downloading reference data"
+#         wget $link -O "${tmp_dir}/${spe}.fna.gz"
+#     fi
+
+#     if [ ! -f "${genomes_dir}/${spe}.fna" ]
+#     then
+#         echo "Decompressing reference data"
+#         gunzip -c "${tmp_dir}/${spe}.fna.gz" > "${genomes_dir}/${spe}.fna"
+#     fi 
+# done < $references_links_general
+
+
+# # download wick specific genomes
+# while IFS= read -r line || [[ -n $line  ]]; do
+
+#     files=($line)
+#     link=${files[0]}
+#     spe=${files[1]}
+
+#     if [ ! -f "${tmp_dir}/${spe}.fna.gz" ]
+#     then
+#         echo "Downloading reference data"
+#         wget $link -O "${tmp_dir}/${spe}.fna.gz"
+#     fi
+
+#     if [ ! -f "${genomes_dir}/${spe}.fna" ]
+#     then
+#         echo "Decompressing reference data"
+#         gunzip -c "${tmp_dir}/${spe}.fna.gz" > "${genomes_dir}/${spe}.fna"
+#     fi 
+# done < $references_links_specific
+
+# download train fast5 data
+while IFS= read -r line || [[ -n $line  ]]; do
+
+    files=($line)
+    link=${files[0]}
+    spe=${files[1]}
+
+    echo $spe
+
+    if [ ! -f "${tmp_dir}/${spe}.tar.gz" ]
+    then
+        echo "Downloading fast5 data"
+        wget $link -O "${tmp_dir}/${spe}.tar.gz"
+    fi
+
+    run_dir="${output_dir}/${spe}"
+    mkdir -p ${run_dir} "${run_dir}/fast5" "${run_dir}/fastq" "${run_dir}/tmp"
+    tar -xvzf "${tmp_dir}/${spe}.tar.gz" -C "${run_dir}/tmp"
+
+    if [ ! -f "${run_dir}/read_references.fasta" ]
+    then
+        echo "Moving data"
+        find "${run_dir}/tmp" -type f -name "*.fast5" -exec mv {} "${run_dir}/fast5" \;
+        find "${run_dir}/tmp" -type f -name "read_references.fasta" -exec mv {} "${run_dir}/read_references.fasta" \;
+    fi
+
 done < $train_fast5_links
 
-while read a b;
-do 
-	link=$a
-	name=$b
-	tar_name="${output_dir}/${name}.tar.gz"
-	dir_name="${output_dir}/${name}"
+# # download test fast5 data
+# while IFS= read -r line || [[ -n $line  ]]; do
 
-	if [ -d $dir_name ]
-	then
-		echo "Skipping: ${name}"
-	else
-		if [ -f $tar_name ]
-		then
-			echo "Unpacking data"
-        	tar -xvzf $tar_name
-		else
-			echo "Downloading: ${name}"
-        	wget $link -O $tar_name
-			echo "Unpacking data"
-            tar -xvzf $tar_name
-		fi
-	fi
-done < $test_fast5_links
+#     files=($line)
+#     link=${files[0]}
+#     spe=${files[1]}
 
+#     if [ ! -f "${tmp_dir}/${spe}.tar.gz" ]
+#     then
+#         echo "Downloading fast5 data"
+#         wget $link -O "${tmp_dir}/${spe}.tar.gz"
+#     fi
 
-if [ ! -d "${output_dir}/basecalls_test" ]
-then
-    mkdir "${output_dir}/basecalls_test"
-fi
+#     run_dir="${output_dir}/${spe}"
+#     mkdir -p ${run_dir} "${run_dir}/fast5"
+#     tar -xvzf "${tmp_dir}/${spe}.tar.gz" -C "${run_dir}/fast5"
+    
 
-while read a b;
-do
-    link=$a
-	name=$b
-    tar_name="${output_dir}/basecalls_test/${name}/${name}.tar.gz"
+# done < $test_fast5_links
+
+# # download test fastq data
+# while IFS= read -r line || [[ -n $line  ]]; do
+
+#     files=($line)
+#     link=${files[0]}
+#     spe=${files[1]}
+
+#     if [ ! -f "${tmp_dir}/${spe}_basecalls.tar.gz" ]
+#     then
+#         echo "Downloading fast5 data"
+#         wget $link -O "${tmp_dir}/${spe}_basecalls.tar.gz"
+#     fi
+
+#     run_dir="${output_dir}/${spe}"
+#     mkdir "${run_dir}/fastq"
+#     tar -xvzf "${tmp_dir}/${spe}_basecalls.tar.gz" -C "${run_dir}/fastq"
+
+#     if [ -f "${run_dir}/fastq/guppy_v2.1.3-v2.2.3.fastq" ]
+#     then
+#         mv "${run_dir}/fastq/guppy_v2.1.3-v2.2.3.fastq" "${run_dir}/fastq/basecalls.fastq"
+#     fi
     
-    if [ ! -d "${output_dir}/basecalls_test/${name}" ]
-    then
-        mkdir "${output_dir}/basecalls_test/${name}"
-    fi
-    
-    if [ -f "${output_dir}/basecalls_test/${name}/basecalls.fastq" ]
-    then
-        echo "Skipping: ${name}"
-        continue
-    fi
-    
-    if [ -f $tar_name ] 
-    then
-        tar -xvzf $tar_name -C "${output_dir}/basecalls_test/${name}"
-    else
-        wget $link -O $tar_name
-        tar -xvzf $tar_name -C "${output_dir}/basecalls_test/${name}"
-    fi
-    
-    if [ -f "${output_dir}/basecalls_test/${name}/guppy_v2.1.3-v2.2.3.fastq" ]
-    then
-        mv "${output_dir}/basecalls_test/${name}/guppy_v2.1.3-v2.2.3.fastq" "${output_dir}/basecalls_test/${name}/basecalls.fastq"
-    fi
-    
-    if [ -f "${output_dir}/basecalls_test/${name}/01_guppy_v2.1.3.fastq" ]
-    then
-        mv "${output_dir}/basecalls_test/${name}/01_guppy_v2.1.3.fastq" "${output_dir}/basecalls_test/${name}/basecalls.fastq"
-    fi
-    
-done < $basecalls_links
+#     if [ -f "${run_dir}/fastq/01_guppy_v2.1.3.fastq" ]
+#     then
+#         mv "${run_dir}/fastq/01_guppy_v2.1.3.fastq" "${run_dir}/fastq/basecalls.fastq"
+#     fi
+
+# done < $basecalls_links
 
 
-while read a b;
-do
-    link=$a
-	name=$b
-    tar_name="${output_dir}/genomes_test/${name}.fna.gz"
-    
-    if [ -f "${output_dir}/genomes_test/${name}.fna" ]
-    then
-        echo "Skipping: ${name}"
-        continue
-    fi
-    
-    if [ -f $tar_name ] 
-    then
-        gzip -d $tar_name
-    else
-        wget $link -O $tar_name
-        gzip -d $tar_name
-    fi
-    
-done < $references_links
-
-if [ ! -d "${output_dir}/genomes" ]
-then
-    mkdir "${output_dir}/genomes"
-fi
-
-while read a b;
-do
-    link=$a
-	name=$b
-    tar_name="${output_dir}/genomes/${name}.fna.gz"
-    
-    if [ -f "${output_dir}/genomes_test/${name}.fna" ]
-    then
-        echo "Skipping: ${name}"
-        continue
-    fi
-    
-    if [ -f $tar_name ] 
-    then
-        gzip -d $tar_name
-    else
-        wget $link -O $tar_name
-        gzip -d $tar_name
-    fi
-    
-done < $genomes_links
 
