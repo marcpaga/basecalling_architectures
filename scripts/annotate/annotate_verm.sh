@@ -41,7 +41,7 @@ if [ ! -f "${main_dir}/segmentation_report.txt" ]
     fi
 
     echo '  Reporting results'
-    python annotate_jain.py --fast5-path ${fast5_dir} --output-file "${main_dir}/segmentation_report.txt" --n-cores $n_cores --report --verbose
+    python annotate_jain.py --fast5-path ${fast5_dir} --output-file "${main_dir}/Lambda_phage/segmentation_report.txt" --n-cores $n_cores --report --verbose
 fi
 
 
