@@ -4,7 +4,7 @@ ready to be used for dataloading for training a model.
 
 import os
 import sys
-sys.path.append('../src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from read import read_fast5
 from normalization import normalize_signal_wrapper
 
