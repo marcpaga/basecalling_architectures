@@ -15,14 +15,12 @@ Splits are random based on pre-defined seeds for reproducibility
 
 Usage:
 python split_data.py --path /hpc/compgen/projects/nanoxog/raw/benchmark \
-                     --bindist-matrix /hpc/compgen/projects/nanoxog/babe/analysis/mpages/clustering/nohomolambda/distance_matrix_binarized_3_k9.txt \
-                     --cluster-order /hpc/compgen/projects/nanoxog/babe/analysis/mpages/clustering/nohomolambda/clustering_species_order_k9.txt \
                      --output-dir /hpc/compgen/users/mpages/babe/doc 
 """
 
 import os
 import sys
-sys.path.append('../../src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 import seeds
 from read import read_fna
 from constants import ALL_SPECIES, HUMAN_CHROMOSOMES, HUMAN_CHROMOSOMES_EVEN, HUMAN_CHROMOSOMES_ODD, HUMAN_CHROMOSOMES_OTHER
@@ -32,7 +30,6 @@ from copy import deepcopy
 import glob
 import re
 import random
-from tqdm import tqdm
 
 import argparse
 
@@ -70,7 +67,7 @@ def split_spe(spe, dirs, num_train_reads, num_test_reads, genome_split, spe_seed
         nd = df[6].searchsorted(k, side = 'right')
         
         tmp_df = df[st:nd]
-        ends = tmp_df[4].astype(int)
+        ends = tmp_df[4].astype(float).astype(int)
         
         train_split += tmp_df[ends < mp][0].tolist()
         test_split += tmp_df[ends > mp][0].tolist()
@@ -389,7 +386,7 @@ def inter_reads_split(main_dir, training_species, testing_species, num_training_
     all_train_files = list()
     all_test_files = list()
     
-    for spe, dirs in train_dirs.items():
+    for _, dirs in train_dirs.items():
         df_list = list()
         for d in dirs:
             df_list.append(pd.read_csv(os.path.join(d, 'segmentation_report.txt'), sep = '\t', header = None))
@@ -421,7 +418,7 @@ def inter_reads_split(main_dir, training_species, testing_species, num_training_
         
     # do the same for the test species
     reads_per_spe = int(num_testing_test_reads/len(test_dirs))
-    for spe, dirs in test_dirs.items():
+    for _, dirs in test_dirs.items():
         df_list = list()
         for d in dirs:
             df_list.append(pd.read_csv(os.path.join(d, 'segmentation_report.txt'), sep = '\t', header = None))
@@ -460,7 +457,7 @@ def inter_reads_split(main_dir, training_species, testing_species, num_training_
 
 
 def main(main_dir, output_dir, bindist_matrix, cluster_order, max_species, min_species, 
-         inter_traintrain, inter_traintest, inter_test, global_train, global_test, genome_split, human_train, human_test):
+         inter_train, inter_traintest, inter_test, global_train, global_test, genome_split, human_train, human_test):
     
     # inter species 
     names_list, final_chosen = inter_species_split(bindist_matrix, cluster_order, max_species, min_species)
@@ -473,7 +470,7 @@ def main(main_dir, output_dir, bindist_matrix, cluster_order, max_species, min_s
         else:
             testing_species.append(n)
     
-    inter_reads_split(main_dir, training_species, testing_species, inter_traintrain, inter_traintest, inter_test, output_dir)
+    inter_reads_split(main_dir, training_species, testing_species, inter_train, inter_traintest, inter_test, output_dir)
     
     # human species
     alldirs = glob.glob(os.path.join(main_dir, '*/*/'), recursive = True)
@@ -481,7 +478,7 @@ def main(main_dir, output_dir, bindist_matrix, cluster_order, max_species, min_s
     for dd in alldirs:
         if re.search('Homo_sapiens', dd):
             dirs.append(dd)
-    train, test = split_human(dirs, human_train, human_test, seeds.HUMAN_SEED, seeds.HUMAN_TRAIN_ODD, output_dir)
+    split_human(dirs, human_train, human_test, seeds.HUMAN_SEED, seeds.HUMAN_TRAIN_ODD, output_dir)
     
     # global
     global_split(main_dir, global_train, global_test, genome_split, output_dir)
@@ -490,19 +487,21 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str, help='Path to the main data dir where the segmentation_report.txt files are')
-    parser.add_argument("--bindist-matrix", type=str, help='Path to the binarized distance matrix between species')
-    parser.add_argument("--cluster-order", type=str, help='Path to the txt file with the order of the clustering')
     parser.add_argument("--output-dir", type=str, help='Path to save the output files')
-    parser.add_argument("--max-species", type=int, help='Number of max species in the train set for the inter-species task', default = 12)
-    parser.add_argument("--min-species", type=int, help='Number of min species in the train set for the inter-species task', default = 10)
-    parser.add_argument("--inter-traintrain", type=int, help='Number of reads for training in the inter-species task', default = 50000)
-    parser.add_argument("--inter-traintest", type=int, help='Number of reads for testing in the inter-species task from the train species set', default = 10000)
-    parser.add_argument("--inter-test", type=int, help='Number of reads for testing in the inter-species task from the test species set', default = 20000)
-    parser.add_argument("--global-train", type=int, help='Number of reads for training for the global task', default = 100000)
-    parser.add_argument("--global-test", type=int, help='Number of reads for testing for the global task', default = 50000)
-    parser.add_argument("--human-train", type=int, help='Number of reads for training for the human task', default = 50000)
-    parser.add_argument("--human-test", type=int, help='Number of reads for testing for the human task', default = 25000)
-    parser.add_argument("--genome-split", type=float, help='Fraction of the genome that should be used for training', default = 0.5)
+    parser.add_argument("--bindist-matrix", type=str, help='Path to the binarized distance matrix between species', 
+                        default = os.path.abspath(os.path.join(os.path.dirname(__file__), 'distance_matrix_binarized_3_k9.txt')))
+    parser.add_argument("--cluster-order", type=str, help='Path to the txt file with the order of the clustering', 
+                        default = os.path.abspath(os.path.join(os.path.dirname(__file__), 'clustering_species_order_k9.txt')))
+    parser.add_argument("--max-species", type=int, help='Number of max species in the train set for the inter-species task', default = seeds.MAX_SPECIES)
+    parser.add_argument("--min-species", type=int, help='Number of min species in the train set for the inter-species task', default = seeds.MIN_SPECIES)
+    parser.add_argument("--inter-train", type=int, help='Number of reads for training in the inter-species task', default = seeds.INTER_TRAIN)
+    parser.add_argument("--inter-traintest", type=int, help='Number of reads for testing in the inter-species task from the train species set', default = seeds.INTER_TRAIN_TEST)
+    parser.add_argument("--inter-test", type=int, help='Number of reads for testing in the inter-species task from the test species set', default = seeds.INTER_TEST)
+    parser.add_argument("--global-train", type=int, help='Number of reads for training for the global task', default = seeds.GLOBAL_TRAIN)
+    parser.add_argument("--global-test", type=int, help='Number of reads for testing for the global task', default = seeds.GLOBAL_TEST)
+    parser.add_argument("--human-train", type=int, help='Number of reads for training for the human task', default = seeds.HUMAN_TRAIN)
+    parser.add_argument("--human-test", type=int, help='Number of reads for testing for the human task', default = seeds.HUMAN_TEST)
+    parser.add_argument("--genome-split", type=float, help='Fraction of the genome that should be used for training', default = seeds.GENOME_SPLIT)
     args = parser.parse_args()
     
     main(main_dir = args.path, 
@@ -511,7 +510,7 @@ if __name__ == "__main__":
          cluster_order = args.cluster_order, 
          max_species = args.max_species, 
          min_species = args.min_species, 
-         inter_traintrain = args.inter_traintrain, 
+         inter_train = args.inter_train, 
          inter_traintest = args.inter_traintest, 
          inter_test = args.inter_test, 
          global_train = args.global_train, 
