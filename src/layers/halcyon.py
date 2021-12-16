@@ -4,8 +4,9 @@ from torch import nn
 class HalcyonCNNBlock(nn.Module):
 
     def __init__(self, input_channels, num_channels, kernel_size, stride, padding, use_bn):
+        super(HalcyonCNNBlock, self).__init__()
 
-        self.cnn == nn.Conv1d(input_channels, num_channels, kernel_size, stride, padding)
+        self.cnn = nn.Conv1d(input_channels, num_channels, kernel_size, stride, padding)
         self.bn = nn.BatchNorm1d(num_channels)
         self.relu = nn.ReLU()
         self.use_bn = use_bn
