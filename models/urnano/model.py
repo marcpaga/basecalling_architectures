@@ -74,7 +74,11 @@ class URNanoModel(BaseModelImpl):
                                URNetUpBlock(n_channels[2], n_channels[1], 3, maxpooling[1], maxpooling[1], stride, padding),
                                URNetUpBlock(n_channels[1], n_channels[0], 3, maxpooling[0], maxpooling[0], stride, padding)])
             
-            self.convolution = URNet(down, flat, up)
+            self.convolution = nn.ModuleList([URNet(down, flat, up), 
+                                              nn.Conv1d(n_channels[0], n_channels[0], 3, stride, padding), 
+                                              nn.BatchNorm1d(n_channels[0]), 
+                                              nn.ReLU()])
+
         if self.rnn is None or default_all:
             self.rnn = nn.GRU(n_channels[0], hidden_size = n_channels[0], num_layers = 3, bidirectional = True)
         if self.decoder is None or default_all:
