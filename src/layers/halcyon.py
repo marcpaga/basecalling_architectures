@@ -21,7 +21,7 @@ class HalcyonCNNBlock(nn.Module):
 
 class HalcyonInceptionBlock(nn.Module):
 
-    def __init__(self, input_channels, num_channels, kernel_sizes, strides, paddings, use_bn, scaler):
+    def __init__(self, input_channels, num_channels, kernel_sizes, strides, paddings, use_bn, scaler, input_length = None):
 
         super(HalcyonInceptionBlock, self).__init__()
 
@@ -32,6 +32,12 @@ class HalcyonInceptionBlock(nn.Module):
         self.paddings = paddings
         self.use_bn = use_bn
         self.scaler = scaler
+        self.input_length = input_length
+
+        if self.input_length is not None:
+            self.avg_padding = self._calculate_padding(self.input_length, self.strides[4], self.kernel_sizes[4])
+        else:
+            self.avg_padding = 0
 
         self.cnn1 = HalcyonCNNBlock(input_channels, int(num_channels[0] * scaler), kernel_sizes[0], strides[0], paddings[0], use_bn[0])
         self.cnn2 = nn.Sequential(
@@ -47,11 +53,15 @@ class HalcyonInceptionBlock(nn.Module):
             HalcyonCNNBlock(num_channels[3], int(num_channels[3] * scaler), kernel_sizes[3], strides[3], paddings[3], use_bn[3])
         )
         self.cnn5 = nn.Sequential(
-            nn.AvgPool1d(kernel_sizes[4], strides[4], paddings[4]),
+            nn.AvgPool1d(kernel_sizes[4], strides[4], padding = self.avg_padding),
             HalcyonCNNBlock(input_channels, int(num_channels[4] * scaler), 1, strides[4], paddings[4], use_bn[4])
         )
         
     def forward(self, x):
+
+        if self.input_length is None:
+            self.input_length = x.shape[2]
+            self.cnn5[0].padding = self._calculate_padding(self.input_length, self.strides[4], self.kernel_sizes[4])
         
         x1 = self.cnn1(x)
         x2 = self.cnn2(x)
@@ -61,3 +71,7 @@ class HalcyonInceptionBlock(nn.Module):
 
         x = torch.cat([x1, x2, x3, x4, x5], dim = 1)
         return x
+
+    def _calculate_padding(self, l, s, k):
+
+        return int((l*s - s + k - l)/2)
