@@ -302,7 +302,6 @@ if __name__ == '__main__':
         'halcyon',
         'mincall',
         'sacall',
-        'urnano_cnn',
         'urnano_rnn'
     ], help='Type of CNN')
     parser.add_argument("--rnn-size", type=int, help='Hidden size of RNN, set to 0 for no RNN', default = 0)
