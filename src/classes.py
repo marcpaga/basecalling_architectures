@@ -744,9 +744,6 @@ class BaseNanoporeDataset(Dataset):
             s2s_tokens = (self.token_eos, self.token_sos, self.token_pad)
             for v in self.encoding_dict.values():
                 assert v not in s2s_tokens
-        else:
-            for v in self.encoding_dict.values():
-                assert v != self.token_pad
 
     def _find_files(self):
         """Finds list of files to read
