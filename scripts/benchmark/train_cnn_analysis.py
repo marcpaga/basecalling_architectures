@@ -71,9 +71,7 @@ class CnnAnalysisModel(BaseModelImpl):
         x = self.convolution(x)
         x = x.permute(2, 0, 1) # [len, batch, channels]
         if self.rnn_size > 0:
-            x = self.rnn(x)
-            if self.rnn_type == 'lstm':
-                x = x[0]
+            x, _ = self.rnn(x)
         x = self.decoder(x)
         return x
         
