@@ -96,7 +96,7 @@ class TimeAnalysisModel(BaseModelImpl):
         else:
             x = self.convolution(x)
             x = x.permute(2, 0, 1) # [len, batch, channels]
-            if self.rnn_type in ('lstm', 'gru', 'urnano'):
+            if self.rnn_type in ('lstm', 'gru', 'urnano', 'lstm3', 'lstm1'):
                 x, _ = self.rnn(x)
             else:
                 x = self.rnn(x)
@@ -395,9 +395,25 @@ class TimeAnalysisModel(BaseModelImpl):
                 BonitoLSTM(384, 384, reverse = True),
                 BonitoLSTM(384, 384, reverse = False)
             )
+        elif self.rnn_type == 'lstm1':
+            rnn =  nn.LSTM(
+                input_size = self.cnn_out_size, 
+                hidden_size = 256, 
+                num_layers = 1, 
+                bidirectional = True
+            )
+            self.rnn_out_size = 512
+        elif self.rnn_type == 'lstm3':
+            rnn =  nn.LSTM(
+                input_size = self.cnn_out_size, 
+                hidden_size = 256, 
+                num_layers = 3, 
+                bidirectional = True
+            )
+            self.rnn_out_size = 512
         else:
             raise ValueError('rnn_type not recognized: ' + str(self.rnn_type))
-            
+        
         return rnn
 
     def _build_decoder(self):
@@ -426,6 +442,8 @@ if __name__ == '__main__':
         'sacall', 
         'bonito', 
         'bonitorev',
+        'lstm1',
+        'lstm3',
     ], help='Type of RNN')
     parser.add_argument("--num-layers", type=int, help='NUmber of stacked RNN layers', default = 2)
     parser.add_argument("--bidirectional", action='store_true', help="Whether to have a bidirectional RNN")
