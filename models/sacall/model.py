@@ -10,18 +10,15 @@ from torch import nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseModelImpl
-from layers import PositionalEncoding
-from layers.bonito import BonitoLinearCRFDecoder
-from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE , CRF_N_BASE 
+from layers.layers import PositionalEncoding
 
-
-class SACall(BaseModelImpl):
+class SACallModel(BaseModelImpl):
     """URNano model
 
     Based on: https://github.com/yaozhong/URnano/blob/master/models/model_unet.py
     """
-    def __init__(self, convolution = None, pe = None, encoder = None, decoder = None, *args, **kwargs):
-        super(SACall, self).__init__(*args, **kwargs)
+    def __init__(self, convolution = None, pe = None, encoder = None, decoder = None, load_default = False, *args, **kwargs):
+        super(SACallModel, self).__init__(*args, **kwargs)
         """
         Args:
             convolution (nn.Module): module with: in [batch, channel, len]; out [batch, channel, len]
@@ -35,7 +32,8 @@ class SACall(BaseModelImpl):
         self.encoder = encoder
         self.decoder = decoder
         
-        self.load_default_configuration()
+        if load_default:
+            self.load_default_configuration()
 
     def forward(self, x):
         """Forward pass of a batch
@@ -46,11 +44,69 @@ class SACall(BaseModelImpl):
         
         x = self.convolution(x)
         x = x.permute(2, 0, 1) # [len, batch, channels]
-        x = self.pe(x)
         x = self.encoder(x)
         x = self.decoder(x)
         
         return x
+
+    def build_cnn(self):
+        
+        d_model = 256
+        kernel = 3
+        stride = 1
+        padding = 1
+        dilation = 1 
+
+        cnn = nn.Sequential(
+            nn.Conv1d(
+                in_channels = 1,
+                out_channels = d_model//2,
+                kernel_size = kernel,
+                stride = stride,
+                padding = padding,
+                dilation = dilation,
+                bias = False),
+            nn.BatchNorm1d(num_features = d_model//2),
+            nn.ReLU(inplace = True),
+            nn.Conv1d(
+                in_channels = d_model//2,
+                out_channels = d_model,
+                kernel_size = kernel,
+                stride = stride,
+                padding = padding,
+                dilation = dilation,
+                bias = False),
+            nn.BatchNorm1d(num_features=d_model),
+            nn.ReLU(inplace=True)
+        )
+
+        return cnn
+
+    def build_encoder(self):
+
+        d_model = 256
+        dropout = 0.1
+        n_layers = 6
+        n_head = 8
+        d_ff = 1024
+
+        pe = PositionalEncoding(d_model, dropout, max_len = 4000)
+        encoder_layer = nn.TransformerEncoderLayer(d_model, n_head, d_ff, dropout)
+        encoder = nn.TransformerEncoder(encoder_layer, n_layers)
+
+        encoder = nn.Sequential(pe, encoder)
+
+        return encoder
+
+    def get_defaults(self):
+
+        defaults = {
+            'cnn_output_size': 256, 
+            'cnn_output_activation': 'relu',
+            'encoder_input_size': 256,
+            'encoder_output_size': 256
+        }
+        return defaults
             
         
     def load_default_configuration(self, default_all = False):
@@ -59,57 +115,10 @@ class SACall(BaseModelImpl):
 
         Based on: https://github.com/huangnengCSU/SACall-basecaller/blob/master/transformer/modules.py
         """
-        
-        d_model = 256
-        kernel = 3
-        stride = 1
-        padding = 1
-        dilation = 1 
-        dropout = 0.1
-        n_layers = 6
-        n_head = 8
-        d_ff = 1024
-
-
+    
         if self.convolution is None or default_all:
-            
-            self.convolution = nn.Sequential(
-                nn.Conv1d(
-                    in_channels = 1,
-                    out_channels = d_model//2,
-                    kernel_size = kernel,
-                    stride = stride,
-                    padding = padding,
-                    dilation = dilation,
-                    bias = False),
-                nn.BatchNorm1d(num_features = d_model//2),
-                nn.ReLU(inplace = True),
-                nn.Conv1d(
-                    in_channels = d_model//2,
-                    out_channels = d_model,
-                    kernel_size = kernel,
-                    stride = stride,
-                    padding = padding,
-                    dilation = dilation,
-                    bias = False),
-                nn.BatchNorm1d(num_features=d_model),
-                nn.ReLU(inplace=True)
-            )
-
-        if self.pe is None or default_all:
-            self.pe = PositionalEncoding(d_model, dropout, max_len = 4000)
+            self.convolution = self.build_cnn()
         if self.encoder is None or default_all:
-            encoder_layer = nn.TransformerEncoderLayer(d_model, n_head, d_ff, dropout)
-            self.encoder = nn.TransformerEncoder(encoder_layer, n_layers)
+            self.encoder = self.build_encoder()
         if self.decoder is None or default_all:
-            if self.model_type == 'ctc':
-                self.decoder = nn.Sequential(nn.Linear(d_model, 5), nn.LogSoftmax(-1))
-            elif self.model_type == 'crf':
-                self.decoder = BonitoLinearCRFDecoder(
-                    insize = d_model, 
-                    n_base = CRF_N_BASE, 
-                    state_len = CRF_STATE_LEN, 
-                    bias=CRF_BIAS, 
-                    scale= CRF_SCALE, 
-                    blank_score= CRF_BLANK_SCORE
-                )
+            self.decoder = self.build_decoder(encoder_output_size = 256, model_type = self.model_type)
