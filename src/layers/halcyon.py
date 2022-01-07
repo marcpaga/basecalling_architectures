@@ -3,21 +3,43 @@ from torch import nn
 
 class HalcyonCNNBlock(nn.Module):
 
-    def __init__(self, input_channels, num_channels, kernel_size, stride, padding, use_bn):
+    def __init__(self, input_channels, num_channels, kernel_size, stride, padding, use_bn, input_length = None):
         super(HalcyonCNNBlock, self).__init__()
 
-        self.cnn = nn.Conv1d(input_channels, num_channels, kernel_size, stride, padding)
+        if padding == 'same' and input_length is not None:
+            padding = self._calculate_padding()
+        else:
+            try:
+                self.cnn = nn.Conv1d(input_channels, num_channels, kernel_size, stride, padding)
+            except:
+                self.cnn = nn.Conv1d(input_channels, num_channels, kernel_size, stride, 'valid')
+
+        self.input_length = input_length
+        self.input_channels = input_channels
+        self.num_channels = num_channels
+        self.stride = stride
+        self.kernel_size = kernel_size
+        self.padding = padding
         self.bn = nn.BatchNorm1d(num_channels)
         self.relu = nn.ReLU()
         self.use_bn = use_bn
 
     def forward(self, x):
 
+        if self.input_length is None and self.padding != 'valid':
+            self.input_length = x.shape[2]
+            self.padding = self._calculate_padding(self.input_length, self.stride, self.kernel_size)
+            self.cnn = nn.Conv1d(self.input_channels, self.num_channels, self.kernel_size, self.stride, self.padding).to(x.device)
+
         x = self.cnn(x)
         x = self.relu(x)
         if self.use_bn:
             x = self.bn(x)
         return x
+
+    def _calculate_padding(self, l, s, k):
+
+        return int((l*s - s + k - l)/2)
 
 class HalcyonInceptionBlock(nn.Module):
 
