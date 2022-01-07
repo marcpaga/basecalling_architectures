@@ -13,8 +13,10 @@ from utils import read_metadata, decode_batch_greedy_ctc
 from read import read_fast5
 from normalization import normalize_signal_from_read_data
 from constants import CTC_BLANK, BASES_CRF, S2S_PAD, S2S_EOS, S2S_SOS, S2S_OUTPUT_CLASSES
+from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE, CRF_N_BASE, BASES
+
 from evaluation import alignment_accuracy
-from layers.bonito import CTC_CRF
+from layers.bonito import CTC_CRF, BonitoLinearCRFDecoder
 
 class BaseModel(nn.Module):
     """Abstract class for basecaller models
@@ -375,13 +377,13 @@ class BaseModelCRF(BaseModel):
 
 class BaseModelImpl(BaseModelCTC, BaseModelCRF):
 
-    def __init__(self, model_type, *args, **kwargs):
+    def __init__(self, decoder_type, *args, **kwargs):
         super(BaseModelImpl, self).__init__(*args, **kwargs)
 
-        valid_model_types = ['ctc', 'crf']
-        if model_type not in valid_model_types:
-            raise ValueError('Given model_type: ' + str(model_type) + ' is not valid. Valid options are: ' + str(valid_model_types))
-        self.model_type = model_type
+        valid_decoder_types = ['ctc', 'crf']
+        if decoder_type not in valid_decoder_types:
+            raise ValueError('Given decoder_type: ' + str(decoder_type) + ' is not valid. Valid options are: ' + str(valid_decoder_types))
+        self.decoder_type = decoder_type
 
     def decode(self, p, greedy = True):
         """Decode the predictions
@@ -393,9 +395,9 @@ class BaseModelImpl(BaseModelCTC, BaseModelCRF):
             A (list) with the decoded strings
         """
         
-        if self.model_type == 'ctc':
+        if self.decoder_type == 'ctc':
             return BaseModelCTC.decode(self, p, greedy)
-        if self.model_type == 'crf':
+        if self.decoder_type == 'crf':
             return BaseModelCRF.decode(self, p, greedy)
         
     def calculate_loss(self, y, p):
@@ -411,10 +413,27 @@ class BaseModelImpl(BaseModelCTC, BaseModelCRF):
                 global_loss
         """
         
-        if self.model_type == 'ctc':
+        if self.decoder_type == 'ctc':
             return BaseModelCTC.calculate_loss(self, y, p)
-        if self.model_type == 'crf':
+        if self.decoder_type == 'crf':
             return BaseModelCRF.calculate_loss(self, y, p)
+
+    def build_decoder(self, encoder_output_size, decoder_type):
+
+        if decoder_type == 'ctc':
+            decoder = nn.Sequential(nn.Linear(encoder_output_size, len(BASES)+1), nn.LogSoftmax(-1))
+        elif decoder_type == 'crf':
+            decoder = BonitoLinearCRFDecoder(
+                insize = encoder_output_size, 
+                n_base = CRF_N_BASE, 
+                state_len = CRF_STATE_LEN, 
+                bias=CRF_BIAS, 
+                scale= CRF_SCALE, 
+                blank_score= CRF_BLANK_SCORE
+            )
+        else:
+            raise ValueError('decoder_type should be "ctc" or "crf", given: ' + str(decoder_type))
+        return decoder
 
 class BaseModelS2S(BaseModel):
     
