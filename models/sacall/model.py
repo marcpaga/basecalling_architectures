@@ -62,7 +62,9 @@ class SACall(BaseModelImpl):
         
         d_model = 256
         kernel = 3
-        maxpooling_stride = 2 
+        stride = 1
+        padding = 1
+        dilation = 1 
         dropout = 0.1
         n_layers = 6
         n_head = 8
@@ -71,18 +73,28 @@ class SACall(BaseModelImpl):
 
         if self.convolution is None or default_all:
             
-            self.convolution = nn.Sequential(nn.Conv1d(1, d_model//2, kernel, 1, 1, bias=False),
-                                             nn.BatchNorm1d(d_model//2),
-                                             nn.ReLU(),
-                                             nn.MaxPool1d(kernel, maxpooling_stride, 1),
-                                             nn.Conv1d(d_model//2, d_model, kernel, 1, 1, bias=False),
-                                             nn.BatchNorm1d(d_model),
-                                             nn.ReLU(),
-                                             nn.MaxPool1d(kernel, maxpooling_stride, 1),
-                                             nn.Conv1d(d_model, d_model, kernel, 1, 1, bias=False),
-                                             nn.BatchNorm1d(d_model),
-                                             nn.ReLU(),
-                                             nn.MaxPool1d(kernel, maxpooling_stride, 1))
+            self.convolution = nn.Sequential(
+                nn.Conv1d(
+                    in_channels = 1,
+                    out_channels = d_model//2,
+                    kernel_size = kernel,
+                    stride = stride,
+                    padding = padding,
+                    dilation = dilation,
+                    bias = False),
+                nn.BatchNorm1d(num_features = d_model//2),
+                nn.ReLU(inplace = True),
+                nn.Conv1d(
+                    in_channels = d_model//2,
+                    out_channels = d_model,
+                    kernel_size = kernel,
+                    stride = stride,
+                    padding = padding,
+                    dilation = dilation,
+                    bias = False),
+                nn.BatchNorm1d(num_features=d_model),
+                nn.ReLU(inplace=True)
+            )
 
         if self.pe is None or default_all:
             self.pe = PositionalEncoding(d_model, dropout, max_len = 4000)
