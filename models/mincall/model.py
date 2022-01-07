@@ -11,14 +11,12 @@ from torch import nn
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseModelImpl
 from layers.mincall import MinCallConvBlock
-from layers.bonito import BonitoLinearCRFDecoder
-from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE , CRF_N_BASE 
 
-class MinCall(BaseModelImpl):
+class MinCallModel(BaseModelImpl):
     """Skeleton Model
     """
-    def __init__(self, convolution = None, decoder = None, *args, **kwargs):
-        super(MinCall, self).__init__(*args, **kwargs)
+    def __init__(self, convolution = None, decoder = None, load_default = False, *args, **kwargs):
+        super(MinCallModel, self).__init__(*args, **kwargs)
         """
         Args:
            convolution (nn.Module): module with: in [batch, channel, len]; out [batch, channel, len]
@@ -28,7 +26,8 @@ class MinCall(BaseModelImpl):
         self.convolution = convolution
         self.decoder = decoder
 
-        self.load_default_configuration()
+        if load_default:
+            self.load_default_configuration()
         
     def forward(self, x):
         
@@ -36,11 +35,8 @@ class MinCall(BaseModelImpl):
         x = x.permute(2, 0, 1) # [len, batch, channels]
         x = self.decoder(x)
         return x
-        
-    def load_default_configuration(self, default_all = False):
-        """Sets the default configuration for one or more
-        modules of the network
-        """
+
+    def build_cnn(self):
 
         num_layers = 72
         pool_every = 24
@@ -49,29 +45,36 @@ class MinCall(BaseModelImpl):
         num_channels = 64
         max_pool_kernel = 2
 
-        if self.convolution is None or default_all:
-            layers = list()
-            # add initial convolution to model to put to 64 channels
-            # otherwise the residual connections in the block fails
-            # since it tries to add tensors with 1 channel and 64 channels
-            layers.append(nn.Conv1d(1, num_channels, kernel_size, 1, padding)) 
-            for i in range(num_layers):
-                if i % pool_every == 0 and i > 0:
-                    layers.append(nn.MaxPool1d(max_pool_kernel))
-                layers.append(MinCallConvBlock(kernel_size, num_channels, num_channels, padding))
+        layers = list()
+        # add initial convolution to model to put to 64 channels
+        # otherwise the residual connections in the block fails
+        # since it tries to add tensors with 1 channel and 64 channels
+        layers.append(nn.Conv1d(1, num_channels, kernel_size, 1, padding)) 
+        for i in range(num_layers):
+            if i % pool_every == 0 and i > 0:
+                layers.append(nn.MaxPool1d(max_pool_kernel))
+            layers.append(MinCallConvBlock(kernel_size, num_channels, num_channels, padding))
 
-            self.convolution = nn.Sequential(*layers)
+        cnn = nn.Sequential(*layers)
+        return cnn
+
+    def get_defaults(self):
+        defaults = {
+            'cnn_output_size': 64, 
+            'cnn_output_activation': None,
+            'encoder_input_size': None,
+            'encoder_output_size': None
+        }
+        return defaults
+        
+    def load_default_configuration(self, default_all = False):
+        """Sets the default configuration for one or more
+        modules of the network
+        """
+
+        if self.convolution is None or default_all:
+            self.convolution = self.build_cnn()
         
         if self.decoder is None or default_all:
-            if self.model_type == 'ctc':
-                self.decoder = nn.Sequential(nn.Linear(num_channels, 5), nn.LogSoftmax(-1))
-            elif self.model_type == 'crf':
-                self.decoder = BonitoLinearCRFDecoder(
-                    insize = 384, 
-                    n_base = CRF_N_BASE, 
-                    state_len = CRF_STATE_LEN, 
-                    bias=CRF_BIAS, 
-                    scale= CRF_SCALE, 
-                    blank_score= CRF_BLANK_SCORE
-                )
+            self.decoder = self.build_decoder(encoder_output_size = 384, model_type = self.model_type)
 
