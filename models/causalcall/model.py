@@ -7,14 +7,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from classes import BaseModelImpl
 from torch import nn
 from layers.causalcall import CausalCallConvBlock
-from layers.bonito import BonitoLinearCRFDecoder
-from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE , CRF_N_BASE 
 
-class CausalCall(BaseModelImpl):
-    """CasualCallCTC Model
+class CausalCallModel(BaseModelImpl):
+    """CasualCall Model
     """
-    def __init__(self, convolution = None, decoder = None, *args, **kwargs):
-        super(CausalCall, self).__init__(*args, **kwargs)
+    def __init__(self, convolution = None, decoder = None, load_default = False, *args, **kwargs):
+        super(CausalCallModel, self).__init__(*args, **kwargs)
         """
         Args:
            convolution (nn.Module): module with: in [batch, channel, len]; out [batch, channel, len]
@@ -24,7 +22,8 @@ class CausalCall(BaseModelImpl):
         self.convolution = convolution
         self.decoder = decoder
 
-        self.load_default_configuration()  
+        if load_default:
+            self.load_default_configuration()  
 
     def forward(self, x):
         """Forward pass of a batch
@@ -33,42 +32,42 @@ class CausalCall(BaseModelImpl):
         x = x.permute(2, 0, 1) # [len, batch, channels]
         x = self.decoder(x)
         return x
-    
-    def load_default_configuration(self, default_all = False):
-        """Sets the default configuration for one or more
-        modules of the network
-        """
-    
+
+    def build_cnn(self):
+
         num_blocks = 5
         num_channels = 256
         kernel_size = 3
         dilation_multiplier = 2
         dilation = 1
+        
+        layers = list()
+        for i in range(num_blocks):
+            if i == 0:
+                layers.append(CausalCallConvBlock(kernel_size, num_channels, 1, dilation))
+            else:
+                layers.append(CausalCallConvBlock(kernel_size, num_channels, int(num_channels/2), dilation))
+            dilation *= dilation_multiplier
+        convolution = nn.Sequential(*layers)
+
+        return convolution
+
+    def get_defaults(self):
+        defaults = {
+            'cnn_output_size': 128, 
+            'cnn_output_activation': 'relu',
+            'encoder_input_size': None,
+            'encoder_output_size': None
+        }
+        return defaults
+    
+    def load_default_configuration(self, default_all = False):
+        """Sets the default configuration for one or more
+        modules of the network
+        """
 
         if self.convolution is None or default_all:
-            layers = list()
-            for i in range(num_blocks):
-                if i == 0:
-                    layers.append(CausalCallConvBlock(kernel_size, num_channels, 1, dilation))
-                else:
-                    layers.append(CausalCallConvBlock(kernel_size, num_channels, int(num_channels/2), dilation))
-                dilation *= dilation_multiplier
-            self.convolution = nn.Sequential(*layers)
+            self.convolution = self.build_cnn()
 
         if self.decoder is None or default_all:
-            if self.model_type == 'ctc':
-                self.decoder = nn.Sequential(nn.Linear(int(num_channels/2), num_channels), 
-                                            nn.ReLU(),
-                                            nn.Linear(num_channels, 5),
-                                            nn.LogSoftmax(-1))
-            elif self.model_type == 'crf':
-                self.decoder = nn.Sequential(nn.Linear(int(num_channels/2), num_channels), 
-                                             nn.ReLU(),
-                                             BonitoLinearCRFDecoder(
-                                                insize = 384, 
-                                                n_base = CRF_N_BASE, 
-                                                state_len = CRF_STATE_LEN, 
-                                                bias=CRF_BIAS, 
-                                                scale= CRF_SCALE, 
-                                                blank_score= CRF_BLANK_SCORE
-                                             ))
+            self.decoder = self.build_decoder(encoder_output_size = 128, model_type = self.model_type)
