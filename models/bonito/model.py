@@ -77,16 +77,16 @@ class BonitoModel(BaseModelImpl):
         )
         return cnn
 
-    def build_encoder(self, reverse):
+    def build_encoder(self, input_size, reverse):
 
         if reverse:
-            encoder = nn.Sequential(BonitoLSTM(384, 384, reverse = True),
+            encoder = nn.Sequential(BonitoLSTM(input_size, 384, reverse = True),
                                     BonitoLSTM(384, 384, reverse = False),
                                     BonitoLSTM(384, 384, reverse = True),
                                     BonitoLSTM(384, 384, reverse = False),
                                     BonitoLSTM(384, 384, reverse = True))
         else:
-            encoder = nn.Sequential(BonitoLSTM(384, 384, reverse = False),
+            encoder = nn.Sequential(BonitoLSTM(input_size, 384, reverse = False),
                                     BonitoLSTM(384, 384, reverse = True),
                                     BonitoLSTM(384, 384, reverse = False),
                                     BonitoLSTM(384, 384, reverse = True),
@@ -110,6 +110,6 @@ class BonitoModel(BaseModelImpl):
         if self.convolution is None or default_all:
             self.convolution = self.build_cnn()
         if self.rnn is None or default_all:
-            self.rnn = self.build_encoder(reverse = self.reverse)
+            self.rnn = self.build_encoder(input_size = 384, reverse = self.reverse)
         if self.decoder is None or default_all:
             self.decoder = self.build_decoder(encoder_output_size = 384, model_type = self.model_type)

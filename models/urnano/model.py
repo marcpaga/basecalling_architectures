@@ -71,8 +71,8 @@ class URNanoModel(BaseModelImpl):
         cnn = nn.Sequential(*cnn)
         return cnn
 
-    def build_encoder(self):
-        encoder = nn.GRU(64, hidden_size = 64, num_layers = 3, bidirectional = True)
+    def build_encoder(self, input_size):
+        encoder = nn.GRU(input_size, hidden_size = 64, num_layers = 3, bidirectional = True)
         return encoder
 
     def get_defaults(self):
@@ -94,6 +94,6 @@ class URNanoModel(BaseModelImpl):
         if self.convolution is None or default_all:          
             self.convolution = self.build_cnn()
         if self.rnn is None or default_all:
-            self.rnn = self.build_encoder()
+            self.rnn = self.build_encoder(input_size = 64)
         if self.decoder is None or default_all:
             self.decoder = self.build_decoder(encoder_output_size = 128, model_type = self.model_type)
