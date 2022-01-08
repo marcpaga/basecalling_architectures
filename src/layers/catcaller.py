@@ -283,22 +283,23 @@ class CATCallerEncoderLayer(nn.Module):
                 glu = glu,
             ),
         ]
+
         self.slf_attn = MultiBranch(layers, [channels])
         self.norm_dropout = nn.Dropout(dropout)
         self.ffn = FFN(d_model, d_ff)
 
-    def forward(self, x, x_mask):
+    def forward(self, x, x_mask = None):
 
         ''' 
-        :param signal_emb: [batch,seq_len,emb_dim]
-        :param src_mask: [batch, seq_len] pad=1
+        :param signal_emb: [seq_len,batch,emb_dim]
         :return:
         '''
 
+        x = x.permute(1, 0, 2) #[batch, len, channels]
         residual = x
         input_norm = self.layer_norm(x) # [B, L, C]
         input_norm = input_norm.permute(1, 0, 2) # [L, B, C]
-        enc_out, enc_self_attn = self.slf_attn(query=input_norm, key=input_norm, value=input_norm, key_padding_mask=x_mask.bool()) 
+        enc_out, _ = self.slf_attn(query=input_norm, key=input_norm, value=input_norm, key_padding_mask=x_mask) 
         enc_out = enc_out.permute(1, 0, 2) # [B, L, C]
         enc_out = residual + self.norm_dropout(enc_out)
         enc_out = self.ffn(enc_out)
