@@ -166,7 +166,7 @@ class GridAnalysisModel(
         
         elif self.encoder_type in ('lstm1', 'lstm3', 'lstm5'):
             defaults = {'encoder_input_size': 256, 'encoder_output_size': 512}
-            num_layers = int(list(self.rnn_type)[-1])
+            num_layers = int(list(self.encoder_type)[-1])
             if self.use_connector:
                 input_size = defaults['encoder_input_size']
             else:
