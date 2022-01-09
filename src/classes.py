@@ -26,7 +26,7 @@ class BaseModel(nn.Module):
     """
     
     def __init__(self, device, dataloader_train, dataloader_validation, 
-                 optimizer = None, schedulers = dict(), criterions = dict(), clipping_value = 2, use_sam = False):
+                 optimizer = None, schedulers = dict(), criterions = dict(), clipping_value = 2, scaler = None, use_amp = False, use_sam = False):
         super(BaseModel, self).__init__()
         
         self.device = device
@@ -40,7 +40,11 @@ class BaseModel(nn.Module):
         self.schedulers = schedulers
         self.criterions = criterions
         self.clipping_value = clipping_value
-        self.use_sam = use_sam
+        self.scaler = scaler
+        if self.scaler is not None:
+            self.use_amp = True
+        else:
+            self.use_amp = use_amp
         
         self.init_weights()
         self.stride = self.get_stride()
@@ -62,10 +66,12 @@ class BaseModel(nn.Module):
         self.train()
         x = batch['x'].to(self.device)
         x = x.unsqueeze(1) # add channels dimension
-        p = self.forward(x) # forward through the network
         y = batch['y'].to(self.device)
         
-        loss, losses = self.calculate_loss(y, p)
+        with torch.cuda.amp.autocast(enabled=self.use_amp):
+            p = self.forward(x) # forward through the network
+            loss, losses = self.calculate_loss(y, p)
+
         self.optimize(loss)
         
         return losses, p
@@ -80,10 +86,11 @@ class BaseModel(nn.Module):
         with torch.no_grad():
             x = batch['x'].to(self.device)
             x = x.unsqueeze(1) # add channels dimension
-            p = self.forward(x) # forward through the network
             y = batch['y'].to(self.device)
-            
-            _, losses = self.calculate_loss(y, p)
+
+            with torch.cuda.amp.autocast(enabled=self.use_amp):
+                p = self.forward(x) # forward through the network
+                _, losses = self.calculate_loss(y, p)
             
         return losses, p
     
@@ -96,7 +103,8 @@ class BaseModel(nn.Module):
         with torch.no_grad():
             x = batch['x'].to(self.device)
             x = x.unsqueeze(1)
-            p = self.forward(x)
+            with torch.cuda.amp.autocast(enabled=self.use_amp):
+                p = self.forward(x)
             
         return p
     
@@ -151,6 +159,17 @@ class BaseModel(nn.Module):
             # self.optimizer.first_step(zero_grad=True)
             # loss, losses = self.calculate_loss(y, p)
             # self.optimizer.second_step(zero_grad=True)
+        elif self.scaler is not None:
+
+            self.scaler.scale(loss).backward()
+
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.parameters(), self.clipping_value)
+
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            self.optimizer.zero_grad()
+
         else:
             self.optimizer.zero_grad()
             loss.backward()
@@ -193,7 +212,8 @@ class BaseModel(nn.Module):
         """Save the model state
         """
         save_dict = {'model_state': self.state_dict(), 
-                     'optimizer_state': self.optimizer.state_dict()}
+                     'optimizer_state': self.optimizer.state_dict(),
+                     'scaler': self.scaler.state_dict()}
         for k, v in self.schedulers.items():
             save_dict[k + '_state'] = v.state_dict()
         torch.save(save_dict, checkpoint_file)

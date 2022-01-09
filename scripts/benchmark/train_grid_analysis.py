@@ -72,7 +72,8 @@ class GridAnalysisModel(
 
         self.convolution = self.build_cnn()
         self.encoder = self.build_encoder()
-        self.connector = self.build_connector()
+        if use_connector:
+            self.connector = self.build_connector()
         self.decoder = self.build_decoder()
 
     def forward(self, x):
@@ -220,6 +221,8 @@ if __name__ == '__main__':
     parser.add_argument("--use-connector", action="store_true", help='use linear layer between convolution and encoder')
     parser.add_argument("--window-size", type=int, choices=[400, 2000, 4000], help='Window size for the data')
     parser.add_argument("--task", type=str, choices=['human', 'global', 'inter'])
+    parser.add_argument("--batch-size", type=int, default = 64)
+    parser.add_argument("--use-scaler", action='store_true', help='use 16bit float precision')
     args = parser.parse_args()
     
     num_epochs = 10
@@ -237,11 +240,18 @@ if __name__ == '__main__':
                                 shuffle = True, 
                                 seed = 1)
 
-    dataloader_train = DataLoader(dataset, batch_size = 64, 
+    dataloader_train = DataLoader(dataset, batch_size = args.batch_size, 
                                 sampler = dataset.train_sampler, num_workers = 1)
-    dataloader_validation = DataLoader(dataset, batch_size = 64, 
+    dataloader_validation = DataLoader(dataset, batch_size = args.batch_size, 
                                     sampler = dataset.validation_sampler, num_workers = 1)
     
+
+    if args.use_scaler:
+        use_amp = True
+        scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    else:
+        use_amp = False
+        scaler = None
 
     model = GridAnalysisModel(
         cnn_type = args.cnn_type, 
@@ -251,6 +261,8 @@ if __name__ == '__main__':
         device = device,
         dataloader_train = dataloader_train, 
         dataloader_validation = dataloader_validation, 
+        scaler = scaler,
+        use_amp = use_amp,
     )
     model = model.to(device)
 
