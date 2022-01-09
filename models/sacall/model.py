@@ -82,7 +82,7 @@ class SACallModel(BaseModelImpl):
 
         return cnn
 
-    def build_encoder(self, input_size):
+    def build_encoder(self):
 
         d_model = 256
         dropout = 0.1
