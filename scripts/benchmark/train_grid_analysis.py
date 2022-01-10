@@ -77,8 +77,8 @@ if __name__ == '__main__':
     parser.add_argument("--use-scaler", action='store_true', help='use 16bit float precision')
     args = parser.parse_args()
     
-    num_epochs = 10
-    validate_every = 100
+    num_epochs = 5
+    validate_every = 500
     checkpoint_every = 20000
 
     data_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/train_input/' + args.task + '/' + str(args.window_size) + '.0'
