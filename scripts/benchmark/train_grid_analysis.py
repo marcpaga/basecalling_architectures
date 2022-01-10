@@ -191,7 +191,7 @@ class GridAnalysisModel(
             return nn.Sequential(nn.Linear(self.cnn_output_size, self.encoder_input_size))
 
     def build_decoder(self):
-        return BaseModelImpl.build_decoder(self, encoder_output_size = self.encoder_output_size, decoder_type = self.decoder_type)\
+        return BaseModelImpl.build_decoder(self, encoder_output_size = self.encoder_output_size, decoder_type = self.decoder_type)
 
 
 if __name__ == '__main__':
@@ -268,7 +268,7 @@ if __name__ == '__main__':
 
     ##    OPTIMIZATION     #############################################
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    total_steps =  (len(dataset.train_idxs)*num_epochs)/64
+    total_steps =  (len(dataset.train_idxs)*num_epochs)/args.batch_size
     cosine_lr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,total_steps, eta_min=0.00001, last_epoch=-1, verbose=False)
     lr_scheduler = GradualWarmupScheduler(optimizer, multiplier = 1.0, total_epoch = 5000, after_scheduler=cosine_lr)
     schedulers = {'lr_scheduler': lr_scheduler}
