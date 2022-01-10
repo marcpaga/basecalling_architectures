@@ -11,7 +11,6 @@ from torch import nn
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseModelImpl
 from layers.layers import PositionalEncoding
-from layers.sacall import EncoderLayer
 
 class SACallModel(BaseModelImpl):
     """SACall model
@@ -54,7 +53,7 @@ class SACallModel(BaseModelImpl):
         
         d_model = 256
         kernel = 3
-        stride = 1
+        stride = 2
         padding = 1
         dilation = 1 
 
@@ -92,7 +91,7 @@ class SACallModel(BaseModelImpl):
         d_ff = 1024
 
         pe = PositionalEncoding(d_model, dropout, max_len = 4000)
-        transformer_layers = nn.ModuleList([EncoderLayer(d_model = d_model, d_ff = d_ff, n_head = n_head, dropout = dropout) for _ in range(n_layers)])
+        transformer_layers = nn.ModuleList([nn.TransformerEncoderLayer(d_model = d_model, dim_feedforward = d_ff, nhead = n_head, dropout = dropout) for _ in range(n_layers)])
         transformer_layers = nn.Sequential(*transformer_layers)
         encoder = nn.Sequential(pe, transformer_layers)
 
