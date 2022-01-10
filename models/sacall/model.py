@@ -11,11 +11,12 @@ from torch import nn
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseModelImpl
 from layers.layers import PositionalEncoding
+from layers.sacall import EncoderLayer
 
 class SACallModel(BaseModelImpl):
-    """URNano model
+    """SACall model
 
-    Based on: https://github.com/yaozhong/URnano/blob/master/models/model_unet.py
+    Based on: https://github.com/huangnengCSU/SACall-basecaller/ctc/ctc_encoder.py
     """
     def __init__(self, convolution = None, pe = None, encoder = None, decoder = None, load_default = False, *args, **kwargs):
         super(SACallModel, self).__init__(*args, **kwargs)
@@ -91,10 +92,9 @@ class SACallModel(BaseModelImpl):
         d_ff = 1024
 
         pe = PositionalEncoding(d_model, dropout, max_len = 4000)
-        encoder_layer = nn.TransformerEncoderLayer(d_model, n_head, d_ff, dropout)
-        encoder = nn.TransformerEncoder(encoder_layer, n_layers)
-
-        encoder = nn.Sequential(pe, encoder)
+        transformer_layers = nn.ModuleList([EncoderLayer(d_model = d_model, d_ff = d_ff, n_head = n_head, dropout = dropout) for _ in range(n_layers)])
+        transformer_layers = nn.Sequential(*transformer_layers)
+        encoder = nn.Sequential(pe, transformer_layers)
 
         return encoder
 

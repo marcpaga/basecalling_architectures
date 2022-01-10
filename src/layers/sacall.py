@@ -1,84 +1,93 @@
+'''Code adapted from: https://github.com/huangnengCSU/SACall-basecaller/blob/ee18a1e5e857810166bd73d05f672a25c9a61a8b/transformer/modules.py#L111
+'''
+
+import math
 import torch
 from torch import nn
 import torch.nn.functional as F
 
-class LightweightConv1d(nn.Module):
-    '''Lightweight Convolution assuming the input is TxBxC
-    Args:
-        input_size (int): # of channels of the input
-        kernel_size (int): convolution channels
-        padding_l (int): padding to the left when using "same" padding
-        num_heads (int): number of heads used. The weight is of shape (num_heads, 1, kernel_size)
-        weight_dropout (float): the drop rate of the DropConnect to drop the weight
-        weight_softmax (bool): normalize the weight with softmax before the convolution
-        bias (bool): use bias
-    Shape:
-        Input: TxBxC, i.e. (timesteps, batch_size, input_size)
-        Output: TxBxC, i.e. (timesteps, batch_size, input_size)
-    Attributes:
-        weight: the learnable weights of the module of shape
-            `(num_heads, 1, kernel_size)`
-        bias:   the learnable bias of the module of shape `(input_size)`
-
-    Modified from: https://github.com/pytorch/fairseq/blob/28876638114948711fd4bd4e350fdd6809013f1e/fairseq/modules/lightweight_convolution.py
-    '''
-    def __init__(self, input_size, kernel_size=1, padding_l=None, num_heads=1,
-                 weight_dropout=0., weight_softmax=False, bias=False):
-        super(LightweightConv1d, self).__init__()
-        self.input_size = input_size
-        self.kernel_size = kernel_size
-        self.padding_l = padding_l
-        self.num_heads = num_heads
-        self.weight_dropout_module = nn.Dropout(weight_dropout)
-        self.weight_softmax = weight_softmax
-
-        self.weight = nn.Parameter(torch.Tensor(num_heads, 1, kernel_size))
-        if bias:
-            self.bias = nn.Parameter(torch.Tensor(input_size))
-        else:
-            self.bias = None
-
-        self.reset_parameters()
+def attention(query, key, value, mask=None, dropout=None):
+    "Compute 'Scaled Dot Product Attention'"
+    d_k = query.size(-1)
+    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+    if mask is not None:
+        scores = scores.masked_fill(mask, -float('inf'))
+    p_attn = F.softmax(scores, dim=-1)
+    if dropout is not None:
+        p_attn = dropout(p_attn)
+    return torch.matmul(p_attn, value), p_attn
 
 
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight)
-        if self.bias is not None:
-            nn.init.constant_(self.bias, 0.)
+class multiheadattention(nn.Module):
+    def __init__(self, h, d_model, dropout=0.1):
+        "Take in model size and number of heads."
+        super(multiheadattention, self).__init__()
+        assert d_model % h == 0
+        self.d_k = d_model // h
+        self.h = h
+        self.w_q = nn.Linear(d_model, d_model, bias=False)
+        self.w_k = nn.Linear(d_model, d_model, bias=False)
+        self.w_v = nn.Linear(d_model, d_model, bias=False)
+        self.fc = nn.Linear(d_model, d_model, bias=False)
+        # nn.init.xavier_normal_(self.w_q.weight)
+        # nn.init.xavier_normal_(self.w_k.weight)
+        # nn.init.xavier_normal_(self.w_v.weight)
+        # nn.init.xavier_normal_(self.fc.weight)
+        self.attn = None
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, query, key, value, mask=None):
+        "Implements Figure 2"
+        if mask is not None:
+            # Same mask applied to all h heads.
+            mask = mask.unsqueeze(1)
+        nbatches = query.size(0)
+
+        # 1) Do all the linear projections in batch from d_model => h x d_k
+
+        query = self.w_q(query).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+        key = self.w_k(key).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+        value = self.w_v(value).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+
+        # 2) Apply attention on all the projected vectors in batch.
+        output, self.attn = attention(query=query, key=key, value=value, mask=mask, dropout=self.dropout)
+
+        # 3) "Concat" using a view and apply a final linear.
+        output = output.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k)
+        output = self.fc(output)
+
+        return output, self.attn
+
+
+class FFN(nn.Module):
+    # feedforward layer
+    def __init__(self, input_size, hidden_size, dropout=0.1):
+        super(FFN, self).__init__()
+        self.w_1 = nn.Linear(in_features=input_size, out_features=hidden_size)
+        self.w_2 = nn.Linear(in_features=hidden_size, out_features=input_size)
+        self.layer_norm = nn.LayerNorm(input_size, eps=1e-6)
+        self.dropout_1 = nn.Dropout(dropout)
+        self.relu = nn.ReLU()
 
     def forward(self, x):
-        '''Turn the convolution filters into band matrices and do matrix multiplication.
-        This is faster when the sequence is short, but less memory efficient.
-        This is not used in the decoder during inference.
+        inter = self.dropout_1(self.relu(self.w_1(self.layer_norm(x))))
+        output = self.w_2(inter)
+        return output + x
 
-        args:
-            x: Input of shape T x B x C, i.e. (timesteps, batch_size, input_size)
-        '''
-        T, B, C = x.size()
-        K, H = self.kernel_size, self.num_heads
-        R = C // H
-        assert R * H == C == self.input_size
+class EncoderLayer(nn.Module):
+    def __init__(self, d_model, d_ff, n_head, dropout=0.1):
+        super(EncoderLayer, self).__init__()
+        self.slf_attn = multiheadattention(h=n_head, d_model=d_model, dropout=dropout)
+        self.ffn = FFN(input_size=d_model, hidden_size=d_ff, dropout=dropout)
+        self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
+        self.norm_dropout = nn.Dropout(dropout)
 
-        weight = self.weight.view(H, K)
-        if self.weight_softmax:
-            weight = F.softmax(weight, dim=1, dtype=torch.float32).type_as(weight)
-        weight = weight.view(1, H, K).expand(T*B, H, K).contiguous()
-        weight = weight.view(T, B*H, K).transpose(0, 1)
+    def forward(self, signal_emb, src_mask = None):
+        input = signal_emb
+        input_norm = self.layer_norm(signal_emb)
+        enc_out, _ = self.slf_attn(input_norm, input_norm, input_norm, src_mask)
+        enc_out = input + self.norm_dropout(enc_out)
 
-        x = x.view(T, B*H, R).transpose(0, 1)
-        P = self.padding_l
-        if K > T and P == K-1:
-            weight = weight.narrow(2, K-T, T)
-            K, P = T, T-1
-        # turn the convolution filters into band matrices
-        weight_expanded = weight.new_zeros(B*H, T, T+K-1, requires_grad=False)
-        weight_expanded.as_strided((B*H, T, K), (T*(T+K-1), T+K, 1)).copy_(weight)
-        weight_expanded = weight_expanded.narrow(2, P, T)
-        weight_expanded = self.weight_dropout_module(weight_expanded)
+        enc_out = self.ffn(enc_out)
 
-        output = torch.bmm(weight_expanded, x)
-        output = output.transpose(0, 1).contiguous().view(T, B, C)
-        
-        if self.bias is not None:
-            output = output + self.bias.view(1, 1, -1)
-        return output
+        return enc_out
