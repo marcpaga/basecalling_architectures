@@ -5,13 +5,12 @@ from torch.utils.data import Dataset, Sampler, DataLoader
 from abc import abstractmethod
 import numpy as np
 import random
-from tqdm import tqdm
-import warnings
 from pathlib import Path
+from fast_ctc_decode import beam_search, viterbi_search
 
 from utils import read_metadata, decode_batch_greedy_ctc
 from read import read_fast5
-from normalization import normalize_signal_from_read_data
+from normalization import normalize_signal_from_read_data, med_mad
 from constants import CTC_BLANK, BASES_CRF, S2S_PAD, S2S_EOS, S2S_SOS, S2S_OUTPUT_CLASSES
 from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE, CRF_N_BASE, BASES
 
@@ -244,7 +243,7 @@ class BaseModelCTC(BaseModel):
 
         self.criterions['ctc'] = nn.CTCLoss(blank = blank, zero_infinity = True).to(self.device)
 
-    def decode(self, p, greedy = True):
+    def decode(self, p, greedy = True, *args, **kwargs):
         """Decode the predictions
          
         Args:
@@ -253,26 +252,50 @@ class BaseModelCTC(BaseModel):
         Returns:
             A (list) with the decoded strings
         """
-        if greedy:
-            return self.decode_ctc_greedy(p)
-        else:
-            return self.decode_ctc_beamsearch(p)
+        if not isinstance(p, np.ndarray):
+            p = p.cpu().numpy()
 
-    def decode_ctc_greedy(self, p):
+        if greedy:
+            return self.decode_ctc_greedy(p, *args, **kwargs)
+        else:
+            return self.decode_ctc_beamsearch(p, *args, **kwargs)
+
+    def decode_ctc_greedy(self, p, qstring = False, qscale = 1.0, qbias = 1.0, collapse_repeats = True, return_path = False):
         """Predict the bases in a greedy approach
         Args:
             p (tensor): [len, batch, classes]
+            qstring (bool): whether to return the phredq scores
+            qscale (float)
+            qbias (float)
         """
-        p = p.detach()
-        p = p.argmax(-1).permute(1, 0)
-        p = p.cpu().numpy()
-        decoded_predictions = decode_batch_greedy_ctc(y = p, 
-                                                      decode_dict = self.dataloader_train.dataset.decoding_dict, 
-                                                      blank_label = CTC_BLANK)
+
+        # p = p.detach()
+        # p = p.argmax(-1).permute(1, 0)
+        # p = p.cpu().numpy()
+        # decoded_predictions = decode_batch_greedy_ctc(y = p, 
+        #                                               decode_dict = self.dataloader_train.dataset.decoding_dict, 
+        #                                               blank_label = CTC_BLANK)
+        
+        alphabet = 'NACGT'
+        decoded_predictions = list()
+        for i in range(p.shape[1]):
+            seq, path = viterbi_search(p[:, i, :], alphabet, qstring = qstring, qscale = qscale, qbias = qbias, collapse_repeats = collapse_repeats)
+            if return_path:
+                decoded_predictions.append((seq, path))
+            else:
+                decoded_predictions.append(seq)
+
         return decoded_predictions
 
-    def decode_ctc_beamsearch(self, p):
-        raise NotImplementedError()
+    def decode_ctc_beamsearch(self, p, beam_size = 5, beam_cut_threshold = 0.1, collapse_repeats = True):
+
+        alphabet = 'NACGT'
+        decoded_predictions = list()
+        for i in range(p.shape[1]):
+            seq, _ = beam_search(p[:, i, :], alphabet, beam_size = beam_size, beam_cut_threshold = beam_cut_threshold, collapse_repeats = collapse_repeats)
+            decoded_predictions.append(seq)
+
+        return decoded_predictions
             
     def calculate_loss(self, y, p):
         """Calculates the losses for each criterion
@@ -405,20 +428,23 @@ class BaseModelImpl(BaseModelCTC, BaseModelCRF):
             raise ValueError('Given decoder_type: ' + str(decoder_type) + ' is not valid. Valid options are: ' + str(valid_decoder_types))
         self.decoder_type = decoder_type
 
-    def decode(self, p, greedy = True):
+    def decode(self, p, greedy = True, *args, **kwargs):
         """Decode the predictions
          
         Args:
             p (tensor): tensor with the predictions with shape [timesteps, batch, classes]
+            and logprobabilities
             greedy (bool): whether to decode using a greedy approach
         Returns:
             A (list) with the decoded strings
         """
+
+        p = p.exp().detach().cpu().numpy()
         
         if self.decoder_type == 'ctc':
-            return BaseModelCTC.decode(self, p, greedy)
+            return BaseModelCTC.decode(self, p.astype(np.float32), greedy = greedy, *args, **kwargs)
         if self.decoder_type == 'crf':
-            return BaseModelCRF.decode(self, p, greedy)
+            return BaseModelCRF.decode(self, p.astype(np.float32), greedy, *args, **kwargs)
         
     def calculate_loss(self, y, p):
         """Calculates the losses for each criterion
@@ -927,8 +953,6 @@ class BaseNanoporeDataset(Dataset):
         return decoded_sequences
 
 
-
-
 class IdxSampler(Sampler):
     """Sampler class to not sample from all the samples
     from a dataset.
@@ -945,24 +969,47 @@ class IdxSampler(Sampler):
         
 class BaseFast5Dataset(Dataset):
     """Base dataset class that iterates over fast5 files for basecalling
-    
-    Args:
-        data_dir (str): dir with fast5files
     """
 
-    def __init__(self, data_dir, recursive = True):
+    def __init__(self, 
+        data_dir = None, 
+        fast5_list = None, 
+        recursive = True, 
+        buffer_size = 100,
+        window_size = 2000,
+        window_overlap = 400,
+        trim_signal = True,
+        ):
+        """
+        Args:
+            data_dir (str): dir where the fast5 file
+            fast5_list (str): file with a list of files to be processed
+            recursive (bool): if the data_dir should be searched recursively
+            buffer_size (int): number of fast5 files to read 
+
+        data_dir and fast5_list are esclusive
+        """
+        
         super(BaseFast5Dataset, self).__init__()
     
         self.data_dir = data_dir
         self.recursive = recursive
-        self.data_files = self.find_all_fast5_files()
+        self.buffer_size = buffer_size
+        self.window_size = window_size
+        self.window_overlap = window_overlap
+        self.trim_signal = trim_signal
 
+        if fast5_list is None:
+            self.data_files = self.find_all_fast5_files()
+        else:
+            self.data_files = self.read_fast5_list(fast5_list)
+
+    
     def __len__(self):
         return len(self.data_files)
     
     def __getitem__(self, idx):
-        read_data = read_fast5(self.data_files[idx])
-        return read_data
+        return self.process_reads(self.data_files[idx])
         
     def find_all_fast5_files(self):
         """Find all fast5 files in a dir recursively
@@ -971,23 +1018,110 @@ class BaseFast5Dataset(Dataset):
         files_list = list()
         for path in Path(self.data_dir).rglob('*.fast5'):
             files_list.append(str(path))
+        files_list = self.buffer_list(files_list, self.buffer_size)
         return files_list
-        
-class BaseBasecallDataset(Dataset):
-    """A simple dataset for basecalling purposes
-    """
-    def __init__(self, x):
-        self.x = x
-    def __len__(self):
-        return self.x.shape[0]
-    def __getitem__(self, idx):
-        return {'x': self.x[idx, :]}
 
+    def read_fast5_list(self, fast5_list):
+        """Read a text file with the reads to be processed
+        """
+
+        files_list = list()
+        with open(fast5_list, 'r') as f:
+            for line in f:
+                files_list.append(line.strip('\n'))
+        files_list = self.buffer_list(files_list, self.buffer_size)
+        return files_list
+
+    def buffer_list(self, files_list, buffer_size):
+        buffered_list = list()
+        for i in range(0, len(files_list), buffer_size):
+            buffered_list.append(files_list[i:i+buffer_size])
+        return buffered_list
+
+    def trim(self, signal, window_size=40, threshold_factor=2.4, min_elements=3):
+        """
+
+        from: https://github.com/nanoporetech/bonito/blob/master/bonito/fast5.py
+        """
+
+        min_trim = 10
+        signal = signal[min_trim:]
+
+        med, mad = med_mad(signal[-(window_size*100):])
+
+        threshold = med + mad * threshold_factor
+        num_windows = len(signal) // window_size
+
+        seen_peak = False
+
+        for pos in range(num_windows):
+            start = pos * window_size
+            end = start + window_size
+            window = signal[start:end]
+            if len(window[window > threshold]) > min_elements or seen_peak:
+                seen_peak = True
+                if window[-1] > threshold:
+                    continue
+                return min(end + min_trim, len(signal)), len(signal)
+
+        return min_trim, len(signal)
+
+    def chunk(self, signal, chunksize, overlap):
+        """
+        Convert a read into overlapping chunks before calling
+
+        The first N datapoints will be cut out so that the window ends perfectly
+        with the number of datapoints of the read.
+        """
+        if isinstance(signal, np.ndarray):
+            signal = torch.from_numpy(signal)
+
+        T = signal.shape[0]
+        if chunksize == 0:
+            chunks = signal[None, :]
+        elif T < chunksize:
+            chunks = torch.nn.functional.pad(signal, (chunksize - T, 0))[None, :]
+        else:
+            stub = (T - overlap) % (chunksize - overlap)
+            chunks = signal[stub:].unfold(0, chunksize, chunksize - overlap)
+        
+        return chunks.unsqueeze(1)
+    
+    def normalize(self, read_data):
+        return normalize_signal_from_read_data(read_data)
+
+    def process_reads(self, read_list):
+        """
+        Args:
+            read_list (list): list of files to be processed
+
+        Returns:
+            two arrays, the first one with the normalzized chunked data,
+            the second one with the read ids of each chunk.
+        """
+        chunks_list = list()
+        id_list = list()
+        for read_file in read_list:
+            reads_data = read_fast5(read_file)
+            for read_id in reads_data.keys():
+                read_data = reads_data[read_id]
+                norm_signal = self.normalize(read_data)
+                if self.trim_signal:
+                    trim, _ = self.trim(norm_signal[:8000])
+                    norm_signal = norm_signal[trim:]
+                chunks = self.chunk(norm_signal, self.window_size, self.window_overlap)
+                num_chunks = chunks.shape[0]
+                id_list.append(np.full((num_chunks,), read_id))
+                chunks_list.append(chunks)
+
+        return {'x': torch.vstack(chunks_list), 'id': np.concatenate(id_list)}
+
+            
 class BaseBasecaller:
     """A base Basecaller class that is used to basecall complete reads
     """
     
-    def __init__(self, model, chunk_size, overlap, batch_size):
+    def __init__(self, dataset, model, batch_size):
         """
         Args:
             model (nn.Module): a model that has the following methods:
@@ -997,92 +1131,11 @@ class BaseBasecaller:
             batch_size (int): batch size to forward through the network
         """
         
+        self.dataset = dataset
         self.model = model
-        self.chunk_size = chunk_size
-        self.overlap = overlap
         self.batch_size = batch_size
         
-    def basecall(self, files_list, output_dir, reads_per_file = 0, greedy = True, silent = False):
-        """
-        """
-        
-        read_counter = 0
-        file_gen = self.output_file_gen()
-        output_file = next(file_gen)
-        
-        if not os.path.isdir(output_dir):
-            os.mkdir(output_dir)
-        
-        # iterate read by read
-        with tqdm(disable = silent) as pbar:
-            for fast5_file in files_list:
-                read_data = read_fast5(fast5_file)
-                
-                for read_id, read_values in read_data.items():
-                    
-                    signal = self.process_read(read_values)
-                    # chunk
-                    chunks = self.chunk(signal, self.chunk_size, self.overlap)
-                    
-                    # make a dataset
-                    dataloader = DataLoader(BaseBasecallDataset(chunks), self.batch_size, shuffle = False, drop_last = False)
-                    
-                    preds = list()
-                    for batch in dataloader:
-                        # forward through model
-                        
-                        p = self.model.predict_step(batch)
-                        preds.append(p)
-                    p = torch.cat(preds, dim = 1)
-                    p = p.permute(1, 0, 2)
-                    
-                    stride = self.model.stride
-                    if not stride:
-                        stride = int(self.chunk_size // p.shape[1])
-                        warnings.warn(('Model has no attribute stride, ideally it would have that, ' + 
-                                       'the stride has been deduced based on the output size of the ' + 
-                                       'predictions as being: ' + str(stride)))
 
-                    # stich
-                    # TODO: this is not compatible with new stich implementations
-                    long_p = self.stich(p, self.chunk_size, self.overlap, len(signal), stride) 
-                    long_p = long_p.unsqueeze(1)
-                    
-                    # decode
-                    pred_str = self.model.decode(long_p, greedy = greedy)[0]
-                    
-                    with open(os.path.join(output_dir, output_file), 'a') as f:
-                        f.write('>' + str(read_id) + '\n')
-                        f.write(pred_str + '\n')
-                        
-                    # write to file
-                    pbar.update(1)
-                    read_counter += 1
-                    
-                    # if we have a limit of reads per file
-                    if reads_per_file > 0:
-                        # if we have reached the limit
-                        if read_counter == reads_per_file :
-                            # get the next file name
-                            output_file = next(file_gen)
-                            # reset the counter
-                            read_counter = 0
-        return None
-    
-    def process_read(self, read_data):
-        """
-        Process the read data as adequate
-        
-        Args:
-            read_data (ReadData): object with all the read data values
-            
-        Returns:
-            A torch tensor with the processed signal
-        """
-        signal = normalize_signal_from_read_data(read_data)
-        signal = torch.from_numpy(signal)
-        
-        return signal
     
     
     @abstractmethod
@@ -1094,35 +1147,7 @@ class BaseBasecaller:
             chunks (tensor): predictions with shape [samples, length, classes]
         """
         raise NotImplementedError()
-        
-    def chunk(self, signal, chunksize, overlap):
-        """
-        Convert a read into overlapping chunks before calling
-        
-        Since it is unlikely that the length of the signal is perfectly divisible 
-        by the chunksize, the first chunk starts from 0, but the second chunk will
-        start from the datapoint that makes it to have a perfect ending.
-        
-        Args:
-            signal (tensor): 1D tensor with the raw signal
-            chunksize (int): size of each chunk
-            overlap (int): datapoints overlap between chunks
-            
-        Copied from https://github.com/nanoporetech/bonito
-        """
-        T = signal.shape[0] # 
-        if chunksize == 0:
-            chunks = signal[None, :]
-        elif T < chunksize:
-            chunks = torch.nn.functional.pad(signal, (chunksize - T, 0))[None, :]
-        else:
-            stub = (T - overlap) % (chunksize - overlap)
-            chunks = signal[stub:].unfold(0, chunksize, chunksize - overlap)
-            if stub > 0:
-                chunks = torch.cat([signal[None, :chunksize], chunks], dim=0)
-        return chunks
-
-
+    
     def stitch_by_stride(self, chunks, chunksize, overlap, length, stride, reverse=False):
         """
         Stitch chunks together with a given overlap
@@ -1163,10 +1188,3 @@ class BaseBasecaller:
                 chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
             ])
         
-    def output_file_gen(self):
-        """An infinite name generator
-        """
-        i = -1
-        while True:
-            i += 1
-            yield 'basecalls_' + str(i) + '.fasta'
