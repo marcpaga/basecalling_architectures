@@ -1220,10 +1220,17 @@ class BaseBasecaller:
             beam_cut_threshold = self.beam_threshold
         )
 
-        fastq_string = '>'+str(read_id)+'\n'
-        fastq_string += seq[0][0][:len(seq[0][1])] + '\n'
-        fastq_string += '+\n'
-        fastq_string += seq[0][0][len(seq[0][1]):] + '\n'
+        if isinstance(seq[0], tuple):
+
+            fastq_string = '>'+str(read_id)+'\n'
+            fastq_string += seq[0][0][:len(seq[0][1])] + '\n'
+            fastq_string += '+\n'
+            fastq_string += seq[0][0][len(seq[0][1]):] + '\n'
+        
+        else:
+
+            fastq_string = '>'+str(read_id)+'\n'
+            fastq_string += seq[0] + '\n'
         
         #self.writer_queue.put(fastq_string)
         return fastq_string
