@@ -7,6 +7,9 @@ import numpy as np
 import random
 from pathlib import Path
 from fast_ctc_decode import beam_search, viterbi_search
+import uuid
+import multiprocessing as mp
+from tqdm import tqdm
 
 from utils import read_metadata, decode_batch_greedy_ctc
 from read import read_fast5
@@ -260,7 +263,7 @@ class BaseModelCTC(BaseModel):
         else:
             return self.decode_ctc_beamsearch(p, *args, **kwargs)
 
-    def decode_ctc_greedy(self, p, qstring = False, qscale = 1.0, qbias = 1.0, collapse_repeats = True, return_path = False):
+    def decode_ctc_greedy(self, p, qstring = False, qscale = 1.0, qbias = 1.0, collapse_repeats = True, return_path = False, *args, **kwargs):
         """Predict the bases in a greedy approach
         Args:
             p (tensor): [len, batch, classes]
@@ -287,7 +290,7 @@ class BaseModelCTC(BaseModel):
 
         return decoded_predictions
 
-    def decode_ctc_beamsearch(self, p, beam_size = 5, beam_cut_threshold = 0.1, collapse_repeats = True):
+    def decode_ctc_beamsearch(self, p, beam_size = 5, beam_cut_threshold = 0.1, collapse_repeats = True, *args, **kwargs):
 
         alphabet = 'NACGT'
         decoded_predictions = list()
@@ -1003,13 +1006,13 @@ class BaseFast5Dataset(Dataset):
             self.data_files = self.find_all_fast5_files()
         else:
             self.data_files = self.read_fast5_list(fast5_list)
-
     
     def __len__(self):
         return len(self.data_files)
     
     def __getitem__(self, idx):
         return self.process_reads(self.data_files[idx])
+
         
     def find_all_fast5_files(self):
         """Find all fast5 files in a dir recursively
@@ -1101,27 +1104,44 @@ class BaseFast5Dataset(Dataset):
         """
         chunks_list = list()
         id_list = list()
+        l_list = list()
+
         for read_file in read_list:
             reads_data = read_fast5(read_file)
+
             for read_id in reads_data.keys():
                 read_data = reads_data[read_id]
                 norm_signal = self.normalize(read_data)
+
                 if self.trim_signal:
                     trim, _ = self.trim(norm_signal[:8000])
                     norm_signal = norm_signal[trim:]
+
                 chunks = self.chunk(norm_signal, self.window_size, self.window_overlap)
                 num_chunks = chunks.shape[0]
-                id_list.append(np.full((num_chunks,), read_id))
+                
+                uuid_fields = uuid.UUID(read_id).fields
+                id_arr = np.zeros((num_chunks, 6), dtype = np.int)
+                for i, uf in enumerate(uuid_fields):
+                    id_arr[:, i] = uf
+                
+                id_list.append(id_arr)
+                l_list.append(np.full((num_chunks,), len(norm_signal)))
                 chunks_list.append(chunks)
+        
+        out = {
+            'x': torch.vstack(chunks_list).squeeze(1), 
+            'id': np.vstack(id_list),
+            'len': np.concatenate(l_list)
+        }
+        return out
 
-        return {'x': torch.vstack(chunks_list), 'id': np.concatenate(id_list)}
 
-            
 class BaseBasecaller:
     """A base Basecaller class that is used to basecall complete reads
     """
     
-    def __init__(self, dataset, model, batch_size):
+    def __init__(self, dataset, model, batch_size, output_file, n_cores = 4, chunksize = 2000, overlap = 200, stride = 5, beam_size = 1, beam_threshold = 0.1):
         """
         Args:
             model (nn.Module): a model that has the following methods:
@@ -1131,22 +1151,130 @@ class BaseBasecaller:
             batch_size (int): batch size to forward through the network
         """
         
-        self.dataset = dataset
+        self.dataset = DataLoader(dataset, batch_size=1, shuffle=False, num_workers = 2)
         self.model = model
         self.batch_size = batch_size
-        
+        self.output_file = output_file
+        self.n_cores = n_cores
+        self.chunksize = chunksize
+        self.overlap = overlap
+        self.stride = stride
+        self.beam_size = beam_size
+        self.beam_threshold = beam_threshold
+        self.multiprocessing()
 
+    def multiprocessing(self):
+
+        manager = mp.Manager()
+        self.decoder_queue = manager.Queue() 
+        self.writer_queue = manager.Queue()
+        writer_pool = mp.Pool(1, self.fastq_listener_writer)
+        decoder_pool = mp.Pool(self.n_cores, self.decode_process)
+
+    def fastq_listener_writer(self):
+        """Listens to outputs on the queue and writes to a file
+
+        Input in queue should be the string to be writen already
+        with the \n
+        """
+        
+        with open(self.output_file, 'a') as f:
+            while True:
+                m = self.writer_queue.get()
+                if m == 'kill':
+                    break
+                f.write(str(m))
+                f.flush()
+
+
+    def decode_process(self):
+
+        while True:
+            m = self.decoder_queue.get()
+            if m == 'kill':
+                break
+
+            probs_stack = m[0]
+            read_len = m[1]
+            read_id = m[2]
+
+            stiched_p = self.stitch_by_stride(
+                chunks = probs_stack, 
+                chunksize = self.chunksize, 
+                overlap = self.overlap, 
+                length = read_len, 
+                stride = self.stride, 
+                reverse=False,
+            )
+
+            if self.beam_size == 1:
+                greedy = True
+            else:
+                greedy = False
+
+            seq = self.model.decode(stiched_p.unsqueeze(1), 
+                greedy = greedy, 
+                qstring = True, 
+                collapse_repeats = True, 
+                return_path = True,
+                beam_size = self.beam_size,
+                beam_cut_threshold = self.beam_threshold
+            )
+
+            fastq_string = '>'+str(read_id)+'\n'
+            fastq_string += seq[0][0][:len(seq[0][1])] + '\n'
+            fastq_string += '+\n'
+            fastq_string += seq[0][0][len(seq[0][1]):] + '\n'
+            
+            self.writer_queue.put(fastq_string)
+            return fastq_string
+
+    def basecall(self, verbose = True):
+
+        # iterate over the data
+        for batch in tqdm(self.dataset, disable = not verbose):
+            
+            x = batch['x'].squeeze(0)
+            l = x.shape[0]
+            ss = torch.arange(0, l, self.batch_size)
+            nn = ss + self.batch_size
+
+            p_list = list()
+            for s, n in zip(ss, nn):
+                p = self.model.predict_step({'x':x[s:n, :]})
+                p_list.append(p)
+                
+            p = torch.hstack(p_list)
+
+            ids = batch['id'][0]
+            ids_arr = np.zeros((ids.shape[0], ), dtype = 'U32')
+            for i in range(ids.shape[0]):
+                ids_arr[i] = str(uuid.UUID(fields=ids[i].tolist()))
+
+
+            for read_id in np.unique(ids_arr):
+                w = np.where(ids_arr == read_id)[0]
+                read_stacks = p[:, w, :].permute(1, 0, 2).cpu()
+                read_len = batch['len'][0, w[0]].item()
+                
+                self.decoder_queue.put((read_stacks, read_len, read_id))
+        
+        self.decoder_queue.put('kill')
+        self.writer_queue.put('kill')
     
     
-    @abstractmethod
-    def stich(self, chunks, *args, **kwargs):
+    def stich(self, chunks, method, *args, **kwargs):
         """
         Stitch chunks together with a given overlap
         
         Args:
             chunks (tensor): predictions with shape [samples, length, classes]
         """
-        raise NotImplementedError()
+
+        if method == 'stride':
+            return self.stich_by_stride(chunks, *args, **kwargs)
+        else:
+            raise NotImplementedError()
     
     def stitch_by_stride(self, chunks, chunksize, overlap, length, stride, reverse=False):
         """
@@ -1187,4 +1315,3 @@ class BaseBasecaller:
             return torch.cat([
                 chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
             ])
-        
