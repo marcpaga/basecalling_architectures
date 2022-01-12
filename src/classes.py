@@ -1264,7 +1264,9 @@ class BaseBasecaller:
                 #self.decoder_queue.put((read_stacks, read_len, read_id))
         
         #self.decoder_queue.put('kill')
-        self.writer_queue.put('kill')
+        #self.writer_queue.put('kill')
+
+        return None
     
     
     def stich(self, chunks, method, *args, **kwargs):
