@@ -1161,15 +1161,15 @@ class BaseBasecaller:
         self.stride = stride
         self.beam_size = beam_size
         self.beam_threshold = beam_threshold
-        self.multiprocessing()
+        #self.multiprocessing()
 
     def multiprocessing(self):
 
         manager = mp.Manager()
-        self.decoder_queue = manager.Queue() 
+        #self.decoder_queue = manager.Queue() 
         self.writer_queue = manager.Queue()
-        writer_pool = mp.Pool(1, self.fastq_listener_writer)
-        decoder_pool = mp.Pool(self.n_cores, self.decode_process)
+        pool = mp.Pool(1) # pool for multiprocessing
+        watcher = pool.apply_async(self.fastq_listener_writer)
 
     def fastq_listener_writer(self):
         """Listens to outputs on the queue and writes to a file
@@ -1186,48 +1186,47 @@ class BaseBasecaller:
                 f.write(str(m))
                 f.flush()
 
-
-    def decode_process(self):
+    def decode_process_queue(self):
 
         while True:
             m = self.decoder_queue.get()
             if m == 'kill':
                 break
 
-            probs_stack = m[0]
-            read_len = m[1]
-            read_id = m[2]
+            return self.decode_process(m[0], m[1], m[2])
 
-            stiched_p = self.stitch_by_stride(
-                chunks = probs_stack, 
-                chunksize = self.chunksize, 
-                overlap = self.overlap, 
-                length = read_len, 
-                stride = self.stride, 
-                reverse=False,
-            )
+    def decode_process(self, probs_stack, read_len, read_id):
 
-            if self.beam_size == 1:
-                greedy = True
-            else:
-                greedy = False
+        stiched_p = self.stitch_by_stride(
+            chunks = probs_stack, 
+            chunksize = self.chunksize, 
+            overlap = self.overlap, 
+            length = read_len, 
+            stride = self.stride, 
+            reverse=False,
+        )
 
-            seq = self.model.decode(stiched_p.unsqueeze(1), 
-                greedy = greedy, 
-                qstring = True, 
-                collapse_repeats = True, 
-                return_path = True,
-                beam_size = self.beam_size,
-                beam_cut_threshold = self.beam_threshold
-            )
+        if self.beam_size == 1:
+            greedy = True
+        else:
+            greedy = False
 
-            fastq_string = '>'+str(read_id)+'\n'
-            fastq_string += seq[0][0][:len(seq[0][1])] + '\n'
-            fastq_string += '+\n'
-            fastq_string += seq[0][0][len(seq[0][1]):] + '\n'
-            
-            self.writer_queue.put(fastq_string)
-            return fastq_string
+        seq = self.model.decode(stiched_p.unsqueeze(1), 
+            greedy = greedy, 
+            qstring = True, 
+            collapse_repeats = True, 
+            return_path = True,
+            beam_size = self.beam_size,
+            beam_cut_threshold = self.beam_threshold
+        )
+
+        fastq_string = '>'+str(read_id)+'\n'
+        fastq_string += seq[0][0][:len(seq[0][1])] + '\n'
+        fastq_string += '+\n'
+        fastq_string += seq[0][0][len(seq[0][1]):] + '\n'
+        
+        #self.writer_queue.put(fastq_string)
+        return fastq_string
 
     def basecall(self, verbose = True):
 
@@ -1256,10 +1255,15 @@ class BaseBasecaller:
                 w = np.where(ids_arr == read_id)[0]
                 read_stacks = p[:, w, :].permute(1, 0, 2).cpu()
                 read_len = batch['len'][0, w[0]].item()
+
+                fastq_string = self.decode_process(read_stacks, read_len, read_id)
+                with open(self.output_file, 'a') as f:
+                    f.write(str(fastq_string))
+                    f.flush()
                 
-                self.decoder_queue.put((read_stacks, read_len, read_id))
+                #self.decoder_queue.put((read_stacks, read_len, read_id))
         
-        self.decoder_queue.put('kill')
+        #self.decoder_queue.put('kill')
         self.writer_queue.put('kill')
     
     
