@@ -1222,14 +1222,14 @@ class BaseBasecaller:
 
         if isinstance(seq[0], tuple):
 
-            fastq_string = '>'+str(read_id)+'\n'
+            fastq_string = '@'+str(read_id)+'\n'
             fastq_string += seq[0][0][:len(seq[0][1])] + '\n'
             fastq_string += '+\n'
             fastq_string += seq[0][0][len(seq[0][1]):] + '\n'
         
         else:
 
-            fastq_string = '>'+str(read_id)+'\n'
+            fastq_string = '@'+str(read_id)+'\n'
             fastq_string += seq[0] + '\n'
         
         #self.writer_queue.put(fastq_string)
@@ -1253,7 +1253,7 @@ class BaseBasecaller:
             p = torch.hstack(p_list)
 
             ids = batch['id'][0]
-            ids_arr = np.zeros((ids.shape[0], ), dtype = 'U32')
+            ids_arr = np.zeros((ids.shape[0], ), dtype = 'U36')
             for i in range(ids.shape[0]):
                 ids_arr[i] = str(uuid.UUID(fields=ids[i].tolist()))
 
