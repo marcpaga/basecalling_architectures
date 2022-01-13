@@ -34,12 +34,12 @@ class SignatureTest(unittest.TestCase):
         arr = np.array([ref, ali, que])
         
         signatures = count_signatures(arr)
-        self.assertEqual(signatures['AC>GT'], 1)
-        self.assertEqual(signatures['CT>CA'], 1)
-        self.assertEqual(signatures['TA>AG'], 1)
-        self.assertEqual(signatures['AG>GC'], 1)
-        self.assertEqual(signatures['GC>TT'], 1)
-        self.assertEqual(signatures['CT>TA'], 1)
+        self.assertEqual(signatures['AG>CC'], 1)
+        self.assertEqual(signatures['GC>TA'], 1)
+        self.assertEqual(signatures['CA>AG'], 1)
+        self.assertEqual(signatures['AG>GT'], 1)
+        self.assertEqual(signatures['GT>CT'], 1)
+        self.assertEqual(signatures['TT>TA'], 1)
         t = 0
         for v in signatures.values():
             if v == 0:
@@ -54,25 +54,6 @@ class SignatureTest(unittest.TestCase):
         arr = np.array([ref, ali, que])
         
         signatures = count_signatures(arr)
-        self.assertEqual(signatures['AC>-T'], 1)
-        self.assertEqual(signatures['CT>TA'], 2)
-        self.assertEqual(signatures['TA>AG'], 1)
-        self.assertEqual(signatures['AG>-C'], 1)
-        self.assertEqual(signatures['GC>-T'], 1)
-        t = 0
-        for v in signatures.values():
-            if v == 0:
-                t += 1
-        self.assertEqual(t, len(signatures) - 5)
-
-    def test_insertions(self):
-
-        ref = ['A','-','T','A','-','-','T','A']
-        ali = ['|',' ','|','|',' ',' ','|','|']
-        que = ['A','C','T','A','G','C','T','A']
-        arr = np.array([ref, ali, que])
-        
-        signatures = count_signatures(arr)
         self.assertEqual(signatures['A->CT'], 2)
         self.assertEqual(signatures['AT>TA'], 2)
         self.assertEqual(signatures['TA>AT'], 1)
@@ -83,6 +64,26 @@ class SignatureTest(unittest.TestCase):
                 t += 1
         self.assertEqual(t, len(signatures) - 4)
 
+    def test_insertions(self):
+
+        ref = ['A','-','T','A','-','-','T','A']
+        ali = ['|',' ','|','|',' ',' ','|','|']
+        que = ['A','C','T','A','G','C','T','A']
+        arr = np.array([ref, ali, que])
+        
+        signatures = count_signatures(arr)
+        self.assertEqual(signatures['AC>-T'], 1)
+        self.assertEqual(signatures['CT>TA'], 2)
+        self.assertEqual(signatures['TA>AG'], 1)
+        self.assertEqual(signatures['AG>-C'], 1)
+        self.assertEqual(signatures['GC>-T'], 1)
+
+        t = 0
+        for v in signatures.values():
+            if v == 0:
+                t += 1
+        self.assertEqual(t, len(signatures) - 5)
+
     def test_mix(self):
 
         ref = ['A','-','T','A','-','G','T','A']
@@ -91,18 +92,17 @@ class SignatureTest(unittest.TestCase):
         arr = np.array([ref, ali, que])
         
         signatures = count_signatures(arr)
-        self.assertEqual(signatures['A->CT'], 1)
-        self.assertEqual(signatures['AT>-A'], 1)
-        self.assertEqual(signatures['TA>AG'], 1)
-        self.assertEqual(signatures['A->GG'], 1)
-        self.assertEqual(signatures['AG>CT'], 1)
-        self.assertEqual(signatures['GT>-A'], 1)
+        self.assertEqual(signatures['AC>-A'], 1)
+        self.assertEqual(signatures['C->TA'], 2)
+        self.assertEqual(signatures['CA>AG'], 1)
+        self.assertEqual(signatures['AG>-C'], 1)
+        self.assertEqual(signatures['GC>GA'], 1)
         
         t = 0
         for v in signatures.values():
             if v == 0:
                 t += 1
-        self.assertEqual(t, len(signatures) - 6)
+        self.assertEqual(t, len(signatures) - 5)
 
     def test_wrong_input(self):
 
