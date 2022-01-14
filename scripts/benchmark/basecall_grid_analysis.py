@@ -33,7 +33,10 @@ if __name__ == "__main__":
 
     model_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/grid_analysis'
     config = args.model_name.split('_')
-    output_file = os.path.join(model_dir, args.task, args.model_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fastq')
+    if args.beam_size == 1:
+        output_file = os.path.join(model_dir, args.task, args.model_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fastq')
+    else:
+        output_file = os.path.join(model_dir, args.task, args.model_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fasta')
 
     cnn_type = config[0]
     encoder_type = config[1]
