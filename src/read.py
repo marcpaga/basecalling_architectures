@@ -160,13 +160,16 @@ def read_fast5(fast5_file, read_ids = None):
 def iter_fasta(fasta_file):
     """Read a fasta file iteratively
     """
+    c = 0
     with open(fasta_file, 'r') as handle:
         for line in handle:
-            if line.startswith('>'):
-                k = line[1:].strip('\n')
-            else:
+            if c == 0:
+                read_id = line[1:].strip('\n')
+                c += 1
+            elif c == 1:
                 seq = line.strip('\n')
-                yield (k, seq)
+                c = 0
+                yield read_id, seq
 
 def read_fasta(fasta_file):
     """Read a fasta file
@@ -182,17 +185,26 @@ def read_fasta(fasta_file):
 def iter_fastq(fastq_file):
     """Read a fastq file iteratively
     """
-    with open(fastq_file, 'r') as handle:
-        for line in handle:
-            if line.startswith('@'):
-                k = line[1:].split(' ')[0].strip('\n')
-                c = 0
-            else:
-                c += 1
-                if c == 1:
-                    seq = line.strip('\n')
-                    yield (k, seq)
+def iter_fastq(fastq_file):
 
+    c = 0
+    with open(fastq_file, 'r') as f:
+        for line in f:
+            if c == 0:
+                c += 1
+                read_id = line[1:].strip('\n')
+            elif c == 1:
+                c += 1
+                seq = line.strip('\n')
+            elif c == 2:
+                c += 1
+                direction = line.strip('\n')
+            elif c == 3:
+                c = 0
+                phredq = line.strip('\n')
+                if len(seq) != len(phredq):
+                    raise ValueError('{}: seq ({}) and phredq ({}) lenghts are different'.format(read_id, len(seq), len(phredq)))
+                yield read_id, (seq, direction, phredq)
 
 def read_fastq(fastq_file):
     """Read a fastq file
@@ -203,6 +215,15 @@ def read_fastq(fastq_file):
         fastq_dict[k] = v
                 
     return fastq_dict
+
+def read_fast(fast_file):
+
+    if fast_file.endswith('.fastq'):
+        return read_fastq(fast_file)
+    if fast_file.endswith('.fasta'):
+        return read_fasta(fast_file)
+    if fast_file.endswith('.fna'):
+        return read_fna(fast_file)
 
 
                 
