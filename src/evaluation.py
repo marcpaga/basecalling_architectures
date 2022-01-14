@@ -1,5 +1,6 @@
 import re
 import numpy as np
+from scipy.stats import mannwhitneyu
 
 from constants import BASES, GLOBAL_ALIGN_FUNCTION, LOCAL_ALIGN_FUNCTION, MATRIX, ALIGNMENT_GAP_OPEN_PENALTY, ALIGNMENT_GAP_EXTEND_PENALTY
 from utils import find_runs
@@ -11,7 +12,6 @@ REPORT_COLUMNS = ['read_id', # id of the read
                     'que_end',
                     'ref_start', # number of insertions/deletions at the start of the alignment
                     'ref_end', # number of insertions/deletions at the end of the alignment
-                    'decoded_cigar',
                     'comment'] 
 
 ERRORS = list()
@@ -28,6 +28,19 @@ for b in BASES:
     REPORT_COLUMNS.append('homo_'+b+'_counts')
     REPORT_COLUMNS.append('homo_'+b+'_errors')
 
+REPORT_COLUMNS.append('phred_error_test')
+REPORT_COLUMNS.append('phred_mismatch_test')
+REPORT_COLUMNS.append('phred_insertion_test')
+REPORT_COLUMNS.append('phred_mean')
+REPORT_COLUMNS.append('phred_median')
+REPORT_COLUMNS.append('phred_std')
+REPORT_COLUMNS.append('phred_mean_correct')
+REPORT_COLUMNS.append('phred_median_correct')
+REPORT_COLUMNS.append('phred_std_correct')
+REPORT_COLUMNS.append('phred_mean_error')
+REPORT_COLUMNS.append('phred_median_error')
+REPORT_COLUMNS.append('phred_std_error')
+
 def align(que, ref, local = True):
     """Wrapper function to align two sequences
     """
@@ -36,9 +49,9 @@ def align(que, ref, local = True):
     else:
         return GLOBAL_ALIGN_FUNCTION(que, ref, ALIGNMENT_GAP_OPEN_PENALTY, ALIGNMENT_GAP_EXTEND_PENALTY, MATRIX)
 
-def elongate_cigar(cigar):
-    cigar_counts = re.split('H|X|=|I|D|N|S|P|M', cigar)
-    cigar_strs = re.split('[0-9]', cigar)
+def elongate_cigar(short_cigar):
+    cigar_counts = re.split('H|X|=|I|D|N|S|P|M', short_cigar)
+    cigar_strs = re.split('[0-9]', short_cigar)
     
     cigar_counts = [c for c in cigar_counts if c != '']
     cigar_strs = [c for c in cigar_strs if c != '']
@@ -50,43 +63,95 @@ def elongate_cigar(cigar):
         longcigar += s*int(c)
     return longcigar, cigar_counts, cigar_strs
 
-def make_align_arr(long_cigar, truth_seq, pred_seq):
+def shorten_cigar(long_cigar):
+
+    for i, l in enumerate(long_cigar):
+        if i == 0:
+            short_cigar = ''
+            c = 1
+            prev_l = l
+            continue
+        
+        if l == prev_l:
+            c += 1
+        else:
+            short_cigar += str(c) + prev_l
+            c = 1
+            prev_l = l
+
+    short_cigar += str(c) + prev_l
+
+    return short_cigar
+
+def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None):
     """Makes an alignment array based on the long cigar
     
     Args:
         long_cigar (str): output from `elongate_cigar`
         truth_seq (str): sequence 1
         pred_seq (str): sequence 2
+        phredq (str): quality scores for the predicted sequence
 
     Returns:
-        A np:array of shape [3, alignment_length]. The first dimensions are the
-        reference, alignment chars and predicted sequence.
+        A np:array of shape [3 or 4, alignment_length]. The first dimensions are the
+        reference, alignment chars, predicted sequence and phredq if given.
     """
+
+    if phredq is not None:
+        if len(pred_seq) != len(phredq):
+            raise ValueError('pred_seq ({}) and phredq ({}) lenghts are different'.format(len(pred_seq), len(phredq)))
     
     tc = 0
     pc = 0
-    align_arr = np.full((3, len(long_cigar)), '')
+    if phredq is None:
+        align_arr = np.full((3, len(long_cigar)), '')
+    else:
+        align_arr = np.full((4, len(long_cigar)), '')
     for i, c in enumerate(long_cigar):
         if c == 'D':
             align_arr[0, i] = truth_seq[tc]
             align_arr[1, i] = ' '
             align_arr[2, i] = '-'
+            if phredq is not None:
+                align_arr[3, i] = ' '
+
             tc += 1
         elif c == 'I':
             align_arr[0, i] = '-'
             align_arr[1, i] = ' '
             align_arr[2, i] = pred_seq[pc]
+            if phredq is not None:
+                align_arr[3, i] = phredq[pc]
+
             pc += 1
         elif c == 'X':
             align_arr[0, i] = truth_seq[tc]
             align_arr[1, i] = '.'
             align_arr[2, i] = pred_seq[pc]
+            if phredq is not None:
+                align_arr[3, i] = phredq[pc]
+
             pc += 1
             tc += 1
         elif c == '=':
             align_arr[0, i] = truth_seq[tc]
             align_arr[1, i] = '|'
             align_arr[2, i] = pred_seq[pc]
+            if phredq is not None:
+                align_arr[3, i] = phredq[pc]
+
+            pc += 1
+            tc += 1
+        elif c == 'M':
+            align_arr[0, i] = truth_seq[tc]
+            align_arr[2, i] = pred_seq[pc]
+            if truth_seq[tc] == pred_seq[pc]:
+                align_arr[1, i] = '|'
+            else:
+                align_arr[1, i] = '.'
+            if phredq is not None:
+                align_arr[3, i] = phredq[pc]
+
             pc += 1
             tc += 1
             
@@ -113,12 +178,15 @@ def count_longcigar_patches(long_cigar, local_st, local_nd):
             
     return err_lens
 
-def eval_pair(ref, que):
+def eval_pair(ref, que, read_id, phredq = None, align_method = 'parasail'):
     """Align two sequences and evaluate the alignment
     
     Args:
-        ref (str): reference sequence
+        ref (str): reference sequence or aligner if using minimap2
         que (str): predicted sequence
+        read_id (str): uuid of the read
+        phredq (str): string with predq symbols
+        align_method (str): whether to do alignment using 'parasail' or 'minimap2'
         
     Returns:
         results (dict): dictionary with metrics and long confusion matrix
@@ -136,39 +204,89 @@ def eval_pair(ref, que):
     # AA>-A deletion
     # A->AA insertion
 
-    
-    
-    # align the two sequences
-    alignment = align(que, ref, local = True)
-    decoded_cigar = alignment.cigar.decode.decode()
-    long_cigar, _, _ = elongate_cigar(decoded_cigar)
-    
-    que_st = alignment.cigar.beg_query
-    que_nd = alignment.end_query
-    ref_st = alignment.cigar.beg_ref
-    ref_nd = alignment.end_ref
-
-    # calculate the local ends
-    local = np.where((np.array(list(long_cigar)) == 'X') | (np.array(list(long_cigar)) == '='))[0]
-    local_st = local[0]
-    local_nd = local[-1]
-    
-    # create a 2D array with the alignment
-    alignment_arr = make_align_arr(long_cigar, ref, que)
-    # +1 to local_nd because the calculation gives the last position, so we 
-    # need one more for slicing
-    local_arr = alignment_arr[:, local_st:local_nd+1]
-    
     result = dict()
     for k in REPORT_COLUMNS:
         result[k] = None
-    result['len_reference'] = len(ref)
-    result['len_basecalls'] = len(que)
+    result['read_id'] = read_id
+
+    
+    if align_method == 'parasail':
+        # align the two sequences
+        alignment = align(que, ref, local = True)
+        decoded_cigar = alignment.cigar.decode.decode()
+        long_cigar, _, _ = elongate_cigar(decoded_cigar)
+        
+        que_st = alignment.cigar.beg_query
+        que_nd = alignment.end_query
+        ref_st = alignment.cigar.beg_ref
+        ref_nd = alignment.end_ref
+
+        # calculate the local ends
+        local = np.where((np.array(list(long_cigar)) == 'X') | (np.array(list(long_cigar)) == '='))[0]
+        local_st = local[0]
+        local_nd = local[-1]
+        decoded_cigar = decoded_cigar[local_st:local_nd+1]
+
+        # create a 2D array with the alignment
+        alignment_arr = make_align_arr(long_cigar, ref, que, phredq = phredq)
+        # +1 to local_nd because the calculation gives the last position, so we 
+        # need one more for slicing
+        local_arr = alignment_arr[:, local_st:local_nd+1]
+        len_ref = len(ref)
+        len_que = len(que)
+
+    elif align_method == 'minimap2':
+
+        len_que = len(que)
+        if len_que == 0:
+            result['len_basecalls'] = len_que
+            result['comment'] = 'no prediction'
+            return result
+
+        correct_match = False
+        for alignment in ref.map(seq = que):
+            if read_id == alignment.ctg:
+                correct_match = True
+                break
+
+        if not correct_match:
+            result['comment'] = 'failed mapping'
+            return result
+        
+        que_st = alignment.q_st
+        que_nd = alignment.q_en + 1
+        ref_st = alignment.r_st
+        ref_nd = alignment.r_en + 1
+        len_ref = len(ref.seq(read_id))
+        
+
+        long_cigar, _, _ = elongate_cigar(alignment.cigar_str)
+
+        if phredq is not None:
+            phredq = phredq[que_st:que_nd]
+
+        local_arr = make_align_arr(
+            long_cigar = long_cigar, 
+            truth_seq = ref.seq(read_id)[ref_st:ref_nd], 
+            pred_seq = que[que_st:que_nd], 
+            phredq = phredq
+        )
+
+        longcigar_arr = np.array(list(long_cigar))
+        longcigar_arr[np.where(local_arr[1, :] == '.')[0]] = 'X'
+        longcigar_fixed = "".join(longcigar_arr.tolist())
+
+        decoded_cigar = shorten_cigar(longcigar_fixed)
+
+    else:
+        raise ValueError()
+    
+    result['len_reference'] = len_ref
+    result['len_basecalls'] = len_que
     result['ref_start'] = ref_st
     result['ref_end'] = ref_nd
     result['que_start'] = que_st
     result['que_end'] = que_nd
-    result['decoded_cigar'] = decoded_cigar
     
     signatures = count_signatures(local_arr)
     result = {**result, **signatures}
@@ -182,7 +300,7 @@ def eval_pair(ref, que):
         homo_errors[b] = 0
 
     ref_arr = local_arr[0, :]
-    for i, b in enumerate(BASES):
+    for b in BASES:
         base_or_gap = (ref_arr == b) | (ref_arr == '-')
         sections = find_runs(base_or_gap)
         for t, st, l in zip(*sections):
@@ -206,7 +324,58 @@ def eval_pair(ref, que):
     for b in BASES:
         result['homo_'+b+'_counts'] = homo_counts[b]
         result['homo_'+b+'_errors'] = homo_errors[b]
-    
+
+    # calculate significance of phredq scores with correctness
+    if phredq is not None:
+        correct = list()
+        error = list()
+        mismatch = list()
+        insertion = list()
+
+        for i in range(local_arr.shape[1]):
+
+            phred_symbol = local_arr[3, i]
+            align_symbol = local_arr[1, i]
+            
+            if phred_symbol == ' ':
+                continue
+            
+            score = ord(phred_symbol) - 33
+            if align_symbol == '|':
+                correct.append(score)
+            elif align_symbol == '.':
+                error.append(score)
+                mismatch.append(score)
+            elif align_symbol == ' ':
+                error.append(score)
+                insertion.append(score)
+
+        try:
+            result['phred_error_test'] = mannwhitneyu(x = correct, y = error, alternative = 'greater').pvalue
+        except:
+            result['phred_error_test'] = -1
+        try:
+            result['phred_mismatch_test'] = mannwhitneyu(x = correct, y = mismatch, alternative = 'greater').pvalue
+        except: 
+            result['phred_mismatch_test'] = -1
+        try:
+            result['phred_insertion_test'] = mannwhitneyu(x = correct, y = insertion, alternative = 'greater').pvalue
+        except:
+            result['phred_insertion_test'] = -1
+
+        result['phred_mean'] = np.mean(correct + error)
+        result['phred_median'] = np.median(correct + error)
+        result['phred_std'] = np.std(correct + error)
+        result['phred_mean_correct'] = np.mean(correct)
+        result['phred_median_correct'] = np.median(correct)
+        result['phred_std_correct'] = np.std(correct)
+        result['phred_mean_error'] = np.mean(error)
+        result['phred_median_error'] = np.median(error)
+        result['phred_std_error'] = np.std(error)
+
+
+    result['comment'] = 'pass'
+
     return result
 
 def count_signatures(arr):
@@ -229,11 +398,11 @@ def count_signatures(arr):
 
     # we iterate over the positions for which we can calculate a signature,
     # which are all but the first and last bases
-    # for each of these positions we look for the closest base in the reference
+    # for each of these positions we look for the closest base in the predictions
     # on the left side and right side
     # then we get which code should be based on the chunk of the array that 
     # we have
-    r = np.array(arr[0, :])
+    r = np.array(arr[2, :])
     nogaps = r != '-'
     pos = np.arange(0, len(nogaps), 1)
 
@@ -241,7 +410,7 @@ def count_signatures(arr):
         st = pos[:i][np.where(nogaps[:i])[0]][-1]
         nd = pos[i+1:][np.where(nogaps[i+1:])[0]][0]
 
-        code = arr[0, st] + arr[0, i] + '>' + arr[2, i] + arr[0, nd]
+        code = arr[2, st] + arr[2, i] + '>' + arr[0, i] + arr[2, nd]
 
         mut_dict[code] += 1
     
