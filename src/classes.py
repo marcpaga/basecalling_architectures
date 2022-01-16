@@ -213,9 +213,15 @@ class BaseModel(nn.Module):
     def save(self, checkpoint_file):
         """Save the model state
         """
+        if self.scaler is not None:
+            scaler_dict = self.scaler.state_dict()
+        else:
+            scaler_dict = None
+            
         save_dict = {'model_state': self.state_dict(), 
                      'optimizer_state': self.optimizer.state_dict(),
-                     'scaler': self.scaler.state_dict()}
+                     'scaler': scaler_dict}
+
         for k, v in self.schedulers.items():
             save_dict[k + '_state'] = v.state_dict()
         torch.save(save_dict, checkpoint_file)
