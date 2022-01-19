@@ -49,6 +49,8 @@ def generate_log_df(losses_keys, metrics_keys):
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
+    parser.add_argument("--data-dir", typr=str, help='Path where the data for the dataloaders is stored')
+    parser.add_argument("--output-dir", type=str, help='Path where the model is saved')
     parser.add_argument("--cnn-type", type=str, choices=[
         'bonito',
         'catcaller',
@@ -81,7 +83,7 @@ if __name__ == '__main__':
     validate_every = 500
     checkpoint_every = 20000
 
-    data_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/train_input/' + args.task + '/' + str(args.window_size) + '.0'
+    data_dir = args.data_dir
     encoding_dict = {'A': 1 , 'C':  2 , 'G':  3 , 'T':  4 , '':  0}
     decoding_dict = { 1 :'A',  2 : 'C',  3 : 'G',  4 : 'T', 0 : ''}
 
@@ -135,7 +137,7 @@ if __name__ == '__main__':
     model.use_sam = False
 
     # output stuff
-    output_dir = os.path.join('/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/grid_analysis', args.task)
+    output_dir = os.path.join(args.output_dir, args.task)
     output_dir += '/'
     config = [args.cnn_type, args.encoder_type, args.decoder_type, args.use_connector, args.window_size]
     for i, c in enumerate(config):
