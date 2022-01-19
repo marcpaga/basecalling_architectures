@@ -49,7 +49,7 @@ def generate_log_df(losses_keys, metrics_keys):
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", typr=str, help='Path where the data for the dataloaders is stored')
+    parser.add_argument("--data-dir", type=str, help='Path where the data for the dataloaders is stored')
     parser.add_argument("--output-dir", type=str, help='Path where the model is saved')
     parser.add_argument("--cnn-type", type=str, choices=[
         'bonito',
