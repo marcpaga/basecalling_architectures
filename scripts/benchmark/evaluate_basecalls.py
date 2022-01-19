@@ -90,6 +90,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--basecalls-path", type=str, help='Path to a fasta or fastq file or dir to be searched')
     parser.add_argument("--references-path", type=str, help='Path to a fasta reference file')
+    parser.add_argument("--output-file", type=str, help='csv output file', default = None)
     parser.add_argument("--depth", type=int, help='How deep to look for fastq or fasta files', default = 1)
     parser.add_argument("--processes", type=int, help='Number of parallel processes', default = 2)
     args = parser.parse_args()
@@ -108,7 +109,10 @@ if __name__ == "__main__":
     references = read_fasta(args.references_path)
 
     for fast_file in fast_files:
-        output_file = ".".join(fast_file.split('.')[:-1]) + '_evaluation.csv'
+        if args.output_file is None:
+            output_file = ".".join(fast_file.split('.')[:-1]) + '_evaluation.csv'
+        else:
+            output_file = args.output_file
         tmp_dir = "/".join(fast_file.split('/')[:-1])
         finished_file = fast_file.split('.')[0] + '_done.txt'
 

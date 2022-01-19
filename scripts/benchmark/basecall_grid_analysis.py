@@ -19,6 +19,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-name", type=str)
+    parser.add_argument("--output-file", type=str, help='output fastq file', default = None)
     parser.add_argument("--task", type=str)
     parser.add_argument("--window-overlap", type=int)
     parser.add_argument("--file-list", type=str)
@@ -33,10 +34,13 @@ if __name__ == "__main__":
 
     model_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/grid_analysis'
     config = args.model_name.split('_')
-    if args.beam_size == 1:
-        output_file = os.path.join(model_dir, args.task, args.model_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fastq')
+    if args.output_file is None:
+        if args.beam_size == 1:
+            output_file = os.path.join(model_dir, args.task, args.model_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fastq')
+        else:
+            output_file = os.path.join(model_dir, args.task, args.model_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fasta')
     else:
-        output_file = os.path.join(model_dir, args.task, args.model_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fasta')
+        output_file = args.output_file
 
     cnn_type = config[0]
     encoder_type = config[1]
