@@ -158,6 +158,3 @@ if __name__ == "__main__":
                 
         writer_queue.put('kill')
         watcher_writer.join()
-
-        with open(finished_file, 'w') as f:
-            f.write('done\n')
