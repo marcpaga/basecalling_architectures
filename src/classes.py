@@ -1240,6 +1240,8 @@ class BaseBasecaller:
 
             fastq_string = '@'+str(read_id)+'\n'
             fastq_string += seq[0] + '\n'
+            fastq_string += '+\n'
+            fastq_string += '?'*len(seq[0]) + '\n'
         
         #self.writer_queue.put(fastq_string)
         return fastq_string
