@@ -50,7 +50,8 @@ rule evaluate:
         mem_mb = str(config['processes']*2)+'G',
         cpus = config['processes'],
         partition = 'cpu',
-        gpus = '0'
+        gpus = '0',
+        cpu_jobs = 1
 
     shell:
         ' set +eu '
@@ -90,8 +91,8 @@ rule basecall:
         mem_mb = '64G',
         cpus = 4,
         partition = 'gpu',
-        gpus = 'RTX6000:1'
-
+        gpus = 'RTX6000:1',
+        gpu_jobs = 1
 
     shell:
         ' set +eu '
@@ -136,8 +137,8 @@ rule train:
         mem_mb = '64G',
         cpus = 4,
         partition = 'gpu',
-        gpus = 'RTX6000:1'
-
+        gpus = 'RTX6000:1',
+        gpu_jobs = 1
 
     shell:
         ' set +eu '

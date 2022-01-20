@@ -8,4 +8,6 @@ cluster: >-
   --mail-type=ALL 
   --mail-user=m.pagesgallego@umcutrecht.nl
 
-jobs: 10
+jobs: 16
+gpu_jobs: 10
+cpu_jobs: 6
