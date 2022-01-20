@@ -7,7 +7,6 @@ cluster: >-
   --gpus-per-node={resources.gpus}
   --mail-type=ALL 
   --mail-user=m.pagesgallego@umcutrecht.nl
+  --job-name={resources.job_name}
 
 jobs: 16
-gpu_jobs: 10
-cpu_jobs: 6

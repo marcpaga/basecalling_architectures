@@ -3,7 +3,7 @@ data_dir: "/hpc/compgen/projects/nanoxog/babe/analysis/mpages/train_input"
 model_dir: "/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/grid_analysis"
 
 # Train configuration
-cnn_type: ["urnano"]
+cnn_type: ["causalcall"]
 encoder_type: ["bonitofwd", "bonitorev", 'urnano', 'lstm1', 'lstm3', 'lstm5']
 decoder_type: ["ctc"]
 window_size: [2000]

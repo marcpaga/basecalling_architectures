@@ -3,6 +3,11 @@
 # the basecalls.
 # The basecalling using greedy and beam and their evaluations can be done in
 # parallel.
+#
+# To run: 
+# snakemake --profile slurm --resources gpu_jobs=10 cpu_jobs=6 -n
+# remove -n otherwise it is a dry run
+
 
 import os
 from snakemake.utils import min_version
@@ -65,12 +70,14 @@ rule evaluate:
         processes = config['processes']
 
     resources:
+        job_name = lambda wildcards: 'evaluate_' + get_model_name_folder(wildcards.cnn, wildcards.enc, wildcards.dec, wildcards.con, wildcards.win),
         time = '12:00:00',
         mem_mb = str(config['processes']*2)+'G',
         cpus = config['processes'],
         partition = 'cpu',
         gpus = '0',
         cpu_jobs = 1
+
 
     shell:
         ' set +eu '
@@ -121,6 +128,7 @@ rule basecall:
         task = lambda wildcards: wildcards.task
 
     resources:
+        job_name = lambda wildcards: 'basecall_' + get_model_name_folder(wildcards.cnn, wildcards.enc, wildcards.dec, wildcards.con, wildcards.win),
         time = '6:00:00',
         mem_mb = '64G',
         cpus = 4,
@@ -172,6 +180,7 @@ rule train:
         use_scaler = config["use_scaler"]
     
     resources:
+        job_name = lambda wildcards: 'train_' + get_model_name_folder(wildcards.cnn, wildcards.enc, wildcards.dec, wildcards.con, wildcards.win),
         time = '3-00:00:00',
         mem_mb = '64G',
         cpus = 4,
