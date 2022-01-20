@@ -133,7 +133,8 @@ class CATCallerModel(BaseModelImpl):
             'cnn_output_size': 512, 
             'cnn_output_activation': 'relu',
             'encoder_input_size': 512,
-            'encoder_output_size': 512
+            'encoder_output_size': 512,
+            'cnn_stride': 4,
         }
         return defaults
         

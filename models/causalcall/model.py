@@ -57,7 +57,8 @@ class CausalCallModel(BaseModelImpl):
             'cnn_output_size': 128, 
             'cnn_output_activation': 'relu',
             'encoder_input_size': None,
-            'encoder_output_size': None
+            'encoder_output_size': None,
+            'cnn_stride': 1,
         }
         return defaults
     

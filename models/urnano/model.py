@@ -80,7 +80,8 @@ class URNanoModel(BaseModelImpl):
             'cnn_output_size': 64, 
             'cnn_output_activation': 'relu',
             'encoder_input_size': 64,
-            'encoder_output_size': 128
+            'encoder_output_size': 128,
+            'cnn_stride': 1
         }
         return defaults
         

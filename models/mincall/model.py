@@ -63,7 +63,8 @@ class MinCallModel(BaseModelImpl):
             'cnn_output_size': 64, 
             'cnn_output_activation': None,
             'encoder_input_size': None,
-            'encoder_output_size': None
+            'encoder_output_size': None,
+            'cnn_stride': 4
         }
         return defaults
         

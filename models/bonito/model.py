@@ -98,7 +98,8 @@ class BonitoModel(BaseModelImpl):
             'cnn_output_size': 384, 
             'cnn_output_activation': 'silu',
             'encoder_input_size': 384,
-            'encoder_output_size': 384
+            'encoder_output_size': 384,
+            'cnn_stride': 5,
         }
         return defaults
         

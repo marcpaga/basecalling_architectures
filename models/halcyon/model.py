@@ -100,6 +100,7 @@ class HalcyonModel(BaseModelImpl):
             'encoder_input_size': 243,
             'encoder_output_size': 256,
             'decoder_input_size': 256,
+            'cnn_stride': 10
         }
         return defaults
 

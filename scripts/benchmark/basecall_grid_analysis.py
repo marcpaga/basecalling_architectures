@@ -26,7 +26,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default = 64)
     parser.add_argument("--beam-size", type=int)
     parser.add_argument("--beam-threshold", type=float)
-    parser.add_argument("--model-stride", type=int)
+    parser.add_argument("--model-stride", type=int, default = None)
     parser.add_argument("--chunk-size", type=int)
     args = parser.parse_args()
 

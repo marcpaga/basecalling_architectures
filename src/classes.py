@@ -1147,7 +1147,7 @@ class BaseBasecaller:
     """A base Basecaller class that is used to basecall complete reads
     """
     
-    def __init__(self, dataset, model, batch_size, output_file, n_cores = 4, chunksize = 2000, overlap = 200, stride = 5, beam_size = 1, beam_threshold = 0.1):
+    def __init__(self, dataset, model, batch_size, output_file, n_cores = 4, chunksize = 2000, overlap = 200, stride = None, beam_size = 1, beam_threshold = 0.1):
         """
         Args:
             model (nn.Module): a model that has the following methods:
@@ -1164,7 +1164,10 @@ class BaseBasecaller:
         self.n_cores = n_cores
         self.chunksize = chunksize
         self.overlap = overlap
-        self.stride = stride
+        if stride is None:
+            self.stride = self.model.cnn_stride
+        else:
+            self.stride = stride
         self.beam_size = beam_size
         self.beam_threshold = beam_threshold
         #self.multiprocessing()

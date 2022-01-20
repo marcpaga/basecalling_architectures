@@ -103,7 +103,8 @@ class SACallModel(BaseModelImpl):
             'cnn_output_size': 256, 
             'cnn_output_activation': 'relu',
             'encoder_input_size': 256,
-            'encoder_output_size': 256
+            'encoder_output_size': 256,
+            'cnn_stride': 4,
         }
         return defaults
             
