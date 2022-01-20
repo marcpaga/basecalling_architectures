@@ -32,12 +32,13 @@ class GridAnalysisModel(
         self.decoder_type = decoder_type
         self.use_connector = use_connector
 
+        self.cnn_stride = None
         self.convolution = self.build_cnn()
         self.encoder = self.build_encoder()
         if use_connector:
             self.connector = self.build_connector()
         self.decoder = self.build_decoder()
-        self.cnn_stride = None
+        
 
     def forward(self, x):
         
@@ -93,6 +94,7 @@ class GridAnalysisModel(
         self.cnn_output_size = defaults['cnn_output_size']
         self.cnn_output_activation = defaults['cnn_output_activation']
         self.cnn_stride = defaults['cnn_stride']
+
         return cnn
 
     def build_encoder(self):
