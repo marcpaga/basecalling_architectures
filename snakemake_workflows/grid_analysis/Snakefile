@@ -19,7 +19,7 @@ rule all:
                 config['model_dir'], 
                 '{task}', 
                 '{cnn}_{enc}_{dec}_{con}_{win}', 
-                'basecalls_{ove}_{beam_size}_{beam_threshold}_evaluation.csv'
+                'basecalls_{ove}_{beam_size}_{beam_threshold}_evaluation.csv',
             ),
             beam_size = config['beam_size'],
             beam_threshold = config['beam_threshold'],
@@ -29,17 +29,36 @@ rule all:
             con = flag_to_str(config['use_connector']),
             win = config['window_size'],
             task = config['task'],
-            ove = config['window_overlap']
+            ove = config['window_overlap'],
         )
         
 rule evaluate:
     input:
-        basecalls_path = os.path.join(config['model_dir'], '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 'basecalls_{ove}_{beam_size}_{beam_threshold}.fastq'),
-        basecalling_done = os.path.join(config['model_dir'], '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 'basecalling_{ove}_{beam_size}_{beam_threshold}.done')
+        basecalls_path = os.path.join(
+            config['model_dir'], 
+            '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 
+            'basecalls_{ove}_{beam_size}_{beam_threshold}.fastq',
+        ),
+        basecalling_done = os.path.join(
+            config['model_dir'], 
+            '{task}', 
+            '{cnn}_{enc}_{dec}_{con}_{win}', 
+            'basecalling_{ove}_{beam_size}_{beam_threshold}.done',
+        )
 
     output:
-        evaluation_file = os.path.join(config['model_dir'], '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 'basecalls_{ove}_{beam_size}_{beam_threshold}_evaluation.csv'),
-        evaluation_done = touch(os.path.join(config['model_dir'], '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 'evaluation_{ove}_{beam_size}_{beam_threshold}.done'))
+        evaluation_file = os.path.join(
+            config['model_dir'], 
+            '{task}', 
+            '{cnn}_{enc}_{dec}_{con}_{win}', 
+            'basecalls_{ove}_{beam_size}_{beam_threshold}_evaluation.csv',
+        ),
+        evaluation_done = touch(os.path.join(
+            config['model_dir'], 
+            '{task}', 
+            '{cnn}_{enc}_{dec}_{con}_{win}', 
+            'evaluation_{ove}_{beam_size}_{beam_threshold}.done',
+        ))
 
     params:
         references_path = config['references_path'],
@@ -69,11 +88,26 @@ rule evaluate:
 
 rule basecall:
     input:
-        training_done=os.path.join(config['model_dir'], '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 'training.done')
+        training_done=os.path.join(
+            config['model_dir'], 
+            '{task}', 
+            '{cnn}_{enc}_{dec}_{con}_{win}', 
+            'training.done',
+        )
 
     output:
-        basecalls_path = os.path.join(config['model_dir'], '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 'basecalls_{ove}_{beam_size}_{beam_threshold}.fastq'),
-        basecalling_done = touch(os.path.join(config['model_dir'], '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 'basecalling_{ove}_{beam_size}_{beam_threshold}.done'))
+        basecalls_path = os.path.join(
+            config['model_dir'], 
+            '{task}', 
+            '{cnn}_{enc}_{dec}_{con}_{win}', 
+            'basecalls_{ove}_{beam_size}_{beam_threshold}.fastq',
+        ),
+        basecalling_done = touch(os.path.join(
+            config['model_dir'], 
+            '{task}', 
+            '{cnn}_{enc}_{dec}_{con}_{win}', 
+            'basecalling_{ove}_{beam_size}_{beam_threshold}.done',
+        ))
     
     params:
         model_name = lambda wildcards: get_model_name_folder(wildcards.cnn, wildcards.enc, wildcards.dec, wildcards.con, wildcards.win),
@@ -120,7 +154,12 @@ rule train:
         output_dir=config['model_dir']
 
     output:
-        training_done=touch(os.path.join(config['model_dir'], '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 'training.done'))
+        training_done=touch(os.path.join(
+            config['model_dir'], 
+            '{task}', 
+            '{cnn}_{enc}_{dec}_{con}_{win}', 
+            'training.done',
+        ))
     
     params:
         cnn_type = lambda wildcards: wildcards.cnn,
@@ -158,20 +197,3 @@ rule train:
         ' --task {params.task} '\
         ' {params.use_connector} '\
         ' {params.use_scaler}; '
-
-        # """
-        # source /home/cog/mpages/.bashrc
-        # conda activate babe
-        # export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64
-        # python /hpc/compgen/users/mpages/babe/scripts/benchmark/train_grid_analysis.py \
-        # --output-dir input.output_dir \
-        # --data-dir input.data_dir \
-        # --cnn-type params.cnn_type \
-        # --encoder-type params.encoder_type \
-        # --decoder-type params.decoder_type \
-        # --window-size params.window_size \
-        # --batch-size params.batch_size \
-        # --task params.task \
-        # params.use_connector \
-        # params.use_scaler
-        # """
