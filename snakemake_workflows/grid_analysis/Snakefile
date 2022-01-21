@@ -85,7 +85,6 @@ rule evaluate:
         ' && . $(conda info --base)/etc/profile.d/conda.sh '
         ' && conda activate babe '
         ' && echo $CONDA_PREFIX; ' 
-        ' export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64; '
         ' python /hpc/compgen/users/mpages/babe/scripts/benchmark/basecall_grid_analysis.py '\
         ' --output-file {output.evaluation_file} '\
         ' --basecalls-path {input.basecalls_path} '\
