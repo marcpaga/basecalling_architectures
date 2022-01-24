@@ -276,6 +276,17 @@ def eval_pair(ref, que, read_id, phredq = None, align_method = 'parasail'):
         longcigar_arr[np.where(local_arr[1, :] == '.')[0]] = 'X'
         longcigar_fixed = "".join(longcigar_arr.tolist())
 
+        local = np.where((np.array(list(longcigar_fixed)) == 'X') | (np.array(list(longcigar_fixed)) == '='))[0]
+        local_st = local[0]
+        local_nd = local[-1]
+        longcigar_fixed = longcigar_fixed[local_st:local_nd+1]
+
+        que_st += local_st
+        que_nd -= local_nd
+        ref_st += local_st
+        ref_nd -= local_nd
+        local_arr = local_arr[:, local_st:local_nd+1]
+
         decoded_cigar = shorten_cigar(longcigar_fixed)
 
     else:
