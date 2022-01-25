@@ -1,0 +1,20 @@
+# models dir
+data_dir: "/hpc/compgen/projects/nanoxog/babe/analysis/mpages/train_input"
+model_dir: "/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/original"
+
+# Train configuration
+model_name: ["bonito","catcaller","causalcall", "mincall", "sacall", "urnano"]
+window_size: [2000]
+task: ["human"] 
+batch_size: 64
+use_scaler: [""] # put zero length string if not ["--use-scaler", ""]
+
+# Basecall configuration
+window_overlap: [400]
+file_list: '/hpc/compgen/users/mpages/babe/doc/splits/human_task_test_reads.txt'
+beam_size: [1]
+beam_threshold: 0.1
+
+# Evaluate configuration
+references_path: '/hpc/compgen/projects/nanoxog/raw/benchmark/all_read_references.fasta'
+processes: 32
