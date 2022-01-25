@@ -292,7 +292,7 @@ class CATCallerEncoderLayer(nn.Module):
 
         ''' 
         :param signal_emb: [seq_len,batch,emb_dim]
-        :return:
+        :return: [seq_len,batch,emb_dim]
         '''
 
         x = x.permute(1, 0, 2) #[batch, len, channels]
@@ -303,4 +303,5 @@ class CATCallerEncoderLayer(nn.Module):
         enc_out = enc_out.permute(1, 0, 2) # [B, L, C]
         enc_out = residual + self.norm_dropout(enc_out)
         enc_out = self.ffn(enc_out)
+        enc_out = enc_out.permute(1, 0, 2) # [L, B, C]
         return enc_out
