@@ -69,7 +69,7 @@ class CausalCallModel(BaseModelImpl):
 
         if self.convolution is None or default_all:
             self.convolution = self.build_cnn()
-
+            self.cnn_stride = self.get_defaults()['cnn_stride']
         if self.decoder is None or default_all:
             self.decoder = self.build_decoder(encoder_output_size = 128, decoder_type = 'ctc')
             self.decoder_type = 'ctc'

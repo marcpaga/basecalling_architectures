@@ -110,6 +110,7 @@ class BonitoModel(BaseModelImpl):
         
         if self.convolution is None or default_all:
             self.convolution = self.build_cnn()
+            self.cnn_stride = self.get_defaults()['cnn_stride']
         if self.encoder is None or default_all:
             self.encoder = self.build_encoder(input_size = 384, reverse = True)
         if self.decoder is None or default_all:

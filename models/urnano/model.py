@@ -94,6 +94,7 @@ class URNanoModel(BaseModelImpl):
 
         if self.convolution is None or default_all:          
             self.convolution = self.build_cnn()
+            self.cnn_stride = self.get_defaults()['cnn_stride']
         if self.rnn is None or default_all:
             self.rnn = self.build_encoder(input_size = 64)
         if self.decoder is None or default_all:

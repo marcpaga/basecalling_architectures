@@ -50,7 +50,6 @@ class CATCallerModel(BaseModelImpl):
         x = self.convolution(x)
         x = x.permute(2, 0, 1) # [len, batch, channels]
         x = self.encoder(x)
-        x = x.permute(1, 0, 2) # [len, batch, channels]
         x = self.decoder(x)
         
         return x
@@ -147,6 +146,7 @@ class CATCallerModel(BaseModelImpl):
 
         if self.convolution is None or default_all:
             self.convolution = self.build_cnn()
+            self.cnn_stride = self.get_defaults()['cnn_stride']
         if self.encoder is None or default_all:
             self.encoder = self.build_encoder()
         if self.decoder is None or default_all:
