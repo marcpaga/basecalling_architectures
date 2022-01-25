@@ -167,7 +167,8 @@ rule train:
         window_size = lambda wildcards: wildcards.win,
         task = lambda wildcards: wildcards.task,
         batch_size = config["batch_size"],
-        use_scaler = config["use_scaler"]
+        use_scaler = config["use_scaler"],
+        overwrite = config['overwrite']
     
     resources:
         job_name = lambda wildcards: 'train_' + wildcards.model,
@@ -192,4 +193,5 @@ rule train:
         ' --window-size {params.window_size} '\
         ' --batch-size {params.batch_size} '\
         ' --task {params.task} '\
+        ' {params.overwrite} '\
         ' {params.use_scaler}; '

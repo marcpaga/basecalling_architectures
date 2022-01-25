@@ -8,6 +8,7 @@ window_size: [2000]
 task: ["human"] 
 batch_size: 64
 use_scaler: [""] # put zero length string if not ["--use-scaler", ""]
+overwrite: '--overwrite'
 
 # Basecall configuration
 window_overlap: [400]

@@ -3,6 +3,7 @@
 
 import os
 import sys
+import shutil
 
 from torch.optim import lr_scheduler
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
@@ -77,6 +78,7 @@ if __name__ == '__main__':
     parser.add_argument("--task", type=str, choices=['human', 'global', 'inter'])
     parser.add_argument("--batch-size", type=int, default = 64)
     parser.add_argument("--use-scaler", action='store_true', help='use 16bit float precision')
+    parser.add_argument("--overwrite", action='store_true', help='delete existing files in folder')
     args = parser.parse_args()
     
     num_epochs = 5
@@ -148,14 +150,20 @@ if __name__ == '__main__':
     checkpoints_dir = os.path.join(output_dir, 'checkpoints')
 
     # check output dir
+    # check output dir
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
         os.mkdir(checkpoints_dir)
     else:
-        if len(os.listdir(output_dir)) > 0:
-            raise FileExistsError('Output dir contains files')
-        else:
+        if args.overwrite:
+            shutil.rmtree(output_dir)
+            os.mkdir(output_dir)
             os.mkdir(checkpoints_dir)
+        else:
+            if len(os.listdir(output_dir)) > 0:
+                raise FileExistsError('Output dir contains files')
+            else:
+                os.mkdir(checkpoints_dir)
     
     # keep track of losses and metrics to take the average
     train_results = dict()
