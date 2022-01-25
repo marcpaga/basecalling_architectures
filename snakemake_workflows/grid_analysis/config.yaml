@@ -5,6 +5,7 @@ model_dir: "/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/grid_analy
 # Train configuration
 cnn_type: ["causalcall"]
 encoder_type: ["bonitofwd", "bonitorev", 'urnano', 'lstm1', 'lstm3', 'lstm5']
+#encoder_type: ['lstm1']
 decoder_type: ["ctc"]
 window_size: [2000]
 task: ["human"] 
@@ -17,7 +18,6 @@ window_overlap: [400]
 file_list: '/hpc/compgen/users/mpages/babe/doc/splits/human_task_test_reads.txt'
 beam_size: [1]
 beam_threshold: 0.1
-model_stride: 1
 
 # Evaluate configuration
 references_path: '/hpc/compgen/projects/nanoxog/raw/benchmark/all_read_references.fasta'

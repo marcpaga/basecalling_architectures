@@ -117,11 +117,11 @@ rule basecall:
     
     params:
         model_name = lambda wildcards: get_model_name_folder(wildcards.cnn, wildcards.enc, wildcards.dec, wildcards.con, wildcards.win),
+        model_dir = config['model_dir'],
         window_overlap = lambda wildcards: wildcards.ove,
         file_list = config['file_list'],
         beam_size = lambda wildcards: wildcards.beam_size,
         beam_threshold = lambda wildcards: wildcards.beam_threshold,
-        model_stride = config['model_stride'],
         window_size = lambda wildcards: wildcards.win,
         batch_size = config["batch_size"],
         task = lambda wildcards: wildcards.task
@@ -144,6 +144,7 @@ rule basecall:
         ' export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64; '
         ' python /hpc/compgen/users/mpages/babe/scripts/benchmark/basecall_grid_analysis.py '\
         ' --model-name {params.model_name} '\
+        ' --model-dir {params.model_dir} '\
         ' --output-file {output.basecalls_path} '\
         ' --task {params.task}'\
         ' --window-overlap {params.window_overlap} '\
@@ -151,7 +152,6 @@ rule basecall:
         ' --batch-size {params.batch_size} '\
         ' --beam-size {params.beam_size} '\
         ' --beam-threshold {params.beam_threshold} '\
-        ' --model-stride {params.model_stride} '\
         ' --chunk-size {params.window_size}; '
 
 

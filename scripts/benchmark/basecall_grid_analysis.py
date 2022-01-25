@@ -19,6 +19,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-name", type=str)
+    parser.add_argument("--model-dir", type=str, help='where all the models are saved')
     parser.add_argument("--output-file", type=str, help='output fastq file', default = None)
     parser.add_argument("--task", type=str)
     parser.add_argument("--window-overlap", type=int)
@@ -32,10 +33,9 @@ if __name__ == "__main__":
 
     fast5_dataset = BaseFast5Dataset(fast5_list= args.file_list, buffer_size = 10)
 
-    model_dir = '/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/grid_analysis'
     config = args.model_name.split('_')
     if args.output_file is None:
-        output_file = os.path.join(model_dir, args.task, args.model_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fastq')
+        output_file = os.path.join(args.model_dir, args.task, args.model_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fastq')
     else:
         output_file = args.output_file
 
@@ -46,10 +46,10 @@ if __name__ == "__main__":
     window_size = config[4]
 
     # load model
-    log = df = pd.read_csv(os.path.join(model_dir, args.task, args.model_name, 'train.log'))
+    log = df = pd.read_csv(os.path.join(args.model_dir, args.task, args.model_name, 'train.log'))
     log = log[log['checkpoint'] == 'yes']
     best_step = log['step'].iloc[np.argmax(log['metric.accuracy.val'])]
-    checkpoint_file = os.path.join(model_dir, args.task, args.model_name, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
+    checkpoint_file = os.path.join(args.model_dir, args.task, args.model_name, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
 
     use_amp = True
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
