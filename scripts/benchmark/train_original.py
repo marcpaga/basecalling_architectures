@@ -65,7 +65,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     num_epochs = 5
-    validate_every = 50
+    validate_every = 500
     checkpoint_every = 20000
 
     data_dir = args.data_dir
