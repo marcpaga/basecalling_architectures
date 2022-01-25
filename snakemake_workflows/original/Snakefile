@@ -37,13 +37,13 @@ rule evaluate:
     input:
         basecalls_path = os.path.join(
             config['model_dir'], 
-            '{task}', '{cnn}_{enc}_{dec}_{con}_{win}', 
+            '{task}', '{model}_{win}', 
             'basecalls_{ove}_{beam_size}_{beam_threshold}.fastq',
         ),
         basecalling_done = os.path.join(
             config['model_dir'], 
             '{task}', 
-            '{cnn}_{enc}_{dec}_{con}_{win}', 
+            '{model}_{win}', 
             'basecalling_{ove}_{beam_size}_{beam_threshold}.done',
         )
 
@@ -66,7 +66,7 @@ rule evaluate:
         processes = config['processes']
 
     resources:
-        job_name = lambda wildcards: 'evaluate_' + wildcards.model_name,
+        job_name = lambda wildcards: 'evaluate_' + wildcards.model,
         time = '12:00:00',
         mem_mb = str(config['processes']*2)+'G',
         cpus = config['processes'],
@@ -192,5 +192,4 @@ rule train:
         ' --window-size {params.window_size} '\
         ' --batch-size {params.batch_size} '\
         ' --task {params.task} '\
-        ' {params.use_connector} '\
         ' {params.use_scaler}; '

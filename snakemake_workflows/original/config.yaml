@@ -3,7 +3,7 @@ data_dir: "/hpc/compgen/projects/nanoxog/babe/analysis/mpages/train_input"
 model_dir: "/hpc/compgen/projects/nanoxog/babe/analysis/mpages/models/original"
 
 # Train configuration
-model_name: ["bonito","catcaller","causalcall", "mincall", "sacall", "urnano"]
+model: ["bonito","catcaller","causalcall", "mincall", "sacall", "urnano"]
 window_size: [2000]
 task: ["human"] 
 batch_size: 64
