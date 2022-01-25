@@ -429,7 +429,7 @@ class BaseModelCRF(BaseModel):
 
 class BaseModelImpl(BaseModelCTC, BaseModelCRF):
 
-    def __init__(self, decoder_type, *args, **kwargs):
+    def __init__(self, decoder_type = 'ctc', *args, **kwargs):
         super(BaseModelImpl, self).__init__(*args, **kwargs)
 
         valid_decoder_types = ['ctc', 'crf']
@@ -448,12 +448,12 @@ class BaseModelImpl(BaseModelCTC, BaseModelCRF):
             A (list) with the decoded strings
         """
 
-        p = p.exp().detach().cpu().numpy()
-        
         if self.decoder_type == 'ctc':
+            p = p.exp().detach().cpu().numpy()
             return BaseModelCTC.decode(self, p.astype(np.float32), greedy = greedy, *args, **kwargs)
         if self.decoder_type == 'crf':
-            return BaseModelCRF.decode(self, p.astype(np.float32), greedy, *args, **kwargs)
+            p = p.detach()
+            return BaseModelCRF.decode(self, p, greedy, *args, **kwargs)
         
     def calculate_loss(self, y, p):
         """Calculates the losses for each criterion

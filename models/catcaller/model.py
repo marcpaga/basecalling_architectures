@@ -150,5 +150,6 @@ class CATCallerModel(BaseModelImpl):
         if self.encoder is None or default_all:
             self.encoder = self.build_encoder()
         if self.decoder is None or default_all:
-            self.decoder = self.build_decoder(encoder_output_size = 512, model_type = self.model_type)
+            self.decoder = self.build_decoder(encoder_output_size = 512, decoder_type = 'ctc')
+            self.decoder_type = 'ctc'
 

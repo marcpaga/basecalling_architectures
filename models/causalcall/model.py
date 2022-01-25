@@ -71,4 +71,5 @@ class CausalCallModel(BaseModelImpl):
             self.convolution = self.build_cnn()
 
         if self.decoder is None or default_all:
-            self.decoder = self.build_decoder(encoder_output_size = 128, model_type = self.model_type)
+            self.decoder = self.build_decoder(encoder_output_size = 128, decoder_type = 'ctc')
+            self.decoder_type = 'ctc'

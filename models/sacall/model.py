@@ -121,4 +121,5 @@ class SACallModel(BaseModelImpl):
         if self.encoder is None or default_all:
             self.encoder = self.build_encoder()
         if self.decoder is None or default_all:
-            self.decoder = self.build_decoder(encoder_output_size = 256, model_type = self.model_type)
+            self.decoder = self.build_decoder(encoder_output_size = 256, decoder_type = 'ctc')
+            self.decoder_type = 'ctc'

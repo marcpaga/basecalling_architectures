@@ -110,7 +110,8 @@ class BonitoModel(BaseModelImpl):
         
         if self.convolution is None or default_all:
             self.convolution = self.build_cnn()
-        if self.rnn is None or default_all:
-            self.rnn = self.build_encoder(input_size = 384, reverse = self.reverse)
+        if self.encoder is None or default_all:
+            self.encoder = self.build_encoder(input_size = 384, reverse = True)
         if self.decoder is None or default_all:
-            self.decoder = self.build_decoder(encoder_output_size = 384, model_type = self.model_type)
+            self.decoder = self.build_decoder(encoder_output_size = 384, decoder_type = 'crf')
+            self.decoder_type = 'crf'
