@@ -112,7 +112,7 @@ rule basecall:
         ))
     
     params:
-        model_name = lambda wildcards: wildcards.model,
+        model = lambda wildcards: wildcards.model,
         window_overlap = lambda wildcards: wildcards.ove,
         file_list = config['file_list'],
         beam_size = lambda wildcards: wildcards.beam_size,
@@ -138,7 +138,7 @@ rule basecall:
         ' && echo $CONDA_PREFIX; ' 
         ' export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64; '
         ' python /hpc/compgen/users/mpages/babe/scripts/benchmark/basecall_original.py '\
-        ' --model-name {params.model_name} '\
+        ' --model {params.model_name} '\
         ' --output-file {output.basecalls_path} '\
         ' --task {params.task}'\
         ' --window-overlap {params.window_overlap} '\
