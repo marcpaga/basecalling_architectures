@@ -31,6 +31,8 @@ import glob
 import re
 import random
 
+GLOBAL_LIST = list()
+
 import argparse
 
 def split_spe(spe, dirs, num_train_reads, num_test_reads, genome_split, spe_seed):
@@ -59,6 +61,7 @@ def split_spe(spe, dirs, num_train_reads, num_test_reads, genome_split, spe_seed
     test_split = list()
     
     for k, v in genome.items():
+        #middle point
         mp = int(len(v) * genome_split)
         
         k = k.split(' ')[0]
@@ -67,10 +70,25 @@ def split_spe(spe, dirs, num_train_reads, num_test_reads, genome_split, spe_seed
         nd = df[6].searchsorted(k, side = 'right')
         
         tmp_df = df[st:nd]
+        starts = tmp_df[3].astype(float).astype(int)
         ends = tmp_df[4].astype(float).astype(int)
         
         train_split += tmp_df[ends < mp][0].tolist()
-        test_split += tmp_df[ends > mp][0].tolist()
+        test_split += tmp_df[starts > mp][0].tolist()
+
+    if len(train_split) == 0:
+        for genome in np.unique(df[6]):
+            st = df[6].searchsorted(genome, side = 'left')
+            nd = df[6].searchsorted(genome, side = 'right')
+            tmp_df = df[st:nd]
+            
+            mp = int(np.max(tmp_df[4].astype(float).astype(int))* genome_split)
+            starts = tmp_df[3].astype(float).astype(int)
+            ends = tmp_df[4].astype(float).astype(int)
+            
+            train_split += tmp_df[ends < mp][0].tolist()
+            test_split += tmp_df[starts > mp][0].tolist()
+
         
     train_split = sorted(train_split)
     random.seed(spe_seed)
@@ -86,10 +104,21 @@ def split_spe(spe, dirs, num_train_reads, num_test_reads, genome_split, spe_seed
         
     if len(test_split) > num_test_reads:
         test_split = test_split[:num_test_reads]
+
+    print('Species: ' + str(spe))
+    print('    Train: ' + str(len(train_split)))
+    print('    Test : ' + str(len(test_split)))
+
+    GLOBAL_LIST.append({
+        'Task': 'Global', 
+        'Species': spe, 
+        'Train': len(train_split), 
+        'Test':len(test_split)
+    })
         
     return train_split, test_split
 
-def split_human(dirs, num_train_reads, num_test_reads, spe_seed, odd_train, output_dir = None):
+def split_human(dirs, num_train_reads, num_test_reads, spe_seed, odd_train, output_dir = None, globaltask = False):
     """Split train and test reads for a the human data
     
     Odd chromosomes are used for training and even for testing, plus the X, Y and Mito.
@@ -151,6 +180,21 @@ def split_human(dirs, num_train_reads, num_test_reads, spe_seed, odd_train, outp
                 f.write(r + '\n')
 
     
+    print('Human: ')
+    print('    Train: ' + str(len(train_split)))
+    print('    Test : ' + str(len(test_split)))
+
+    if globaltask:
+        task = 'Global'
+    else:
+        task = 'Human'
+    GLOBAL_LIST.append({
+        'Task': task, 
+        'Species': 'Homo_sapiens', 
+        'Train': len(train_split), 
+        'Test':len(test_split)
+    })
+    
     return train_split, test_split
     
 
@@ -190,7 +234,7 @@ def global_split(main_dir, num_train_reads, num_test_reads, genome_split, output
     spe_seed = seeds.GLOBAL_SEED
     for spe, dirs in multi_dirs.items():
         if spe == 'Homo_sapiens':
-            train, test = split_human(dirs, train_reads_per_spe, test_reads_per_spe, spe_seed, seeds.GLOBAL_TRAIN_ODD, None)
+            train, test = split_human(dirs, train_reads_per_spe, test_reads_per_spe, spe_seed, seeds.GLOBAL_TRAIN_ODD, None, globaltask = True)
         else:
             train, test = split_spe(spe, dirs, train_reads_per_spe, test_reads_per_spe, genome_split, spe_seed)
         
@@ -205,6 +249,10 @@ def global_split(main_dir, num_train_reads, num_test_reads, genome_split, output
     with open(os.path.join(output_dir, 'global_task_test_reads.txt'), 'w') as f:
         for r in test_reads:
             f.write(r + '\n')
+
+    print('Global: ')
+    print('    Train: ' + str(len(train_reads)))
+    print('    Test : ' + str(len(test_reads)))
         
     return train_reads, test_reads
 
@@ -356,105 +404,113 @@ def inter_reads_split(main_dir, training_species, testing_species, num_training_
         a list with all the testing files
     """
     
-    # get all the paths with the species names
     dirs = glob.glob(os.path.join(main_dir, '*/*/'), recursive = True)
     
     # split paths between train and test species
-    train_dirs = dict()
-    for train_s in training_species:
-        train_s = train_s.replace(' ', '_')
-        train_dirs[train_s] = list()
+    spe_dirs = dict()
+    for spe in training_species + testing_species:
+        spe2 = spe.replace(' ', '_')
         for dd in dirs:
-            if re.search(train_s, dd):
-                train_dirs[train_s].append(dd)
-                
-    test_dirs = dict()
-    for test_s in testing_species:
-        test_s = test_s.replace(' ', '_')
-        test_dirs[test_s] = list()
-        for dd in dirs:
-            if re.search(test_s, dd):
-                test_dirs[test_s].append(dd)
+            if re.search(spe2, dd):
+                if spe not in spe_dirs.keys():
+                    spe_dirs[spe] = list()
+                spe_dirs[spe].append(dd)
+
                 
     # to calculate number of training and testing reads in case that lower amount of 
     # reads are available
-    reads_per_spe = (num_training_reads + num_testing_train_reads)/len(train_dirs)
-    train_test_ratio = num_training_reads/num_testing_train_reads
-    
+    total_reads_per_spe = int((num_training_reads + num_testing_train_reads)/len(training_species))
+    train_reads_per_spe = int(num_training_reads/len(training_species))
+    traintest_reads_per_spe = int(num_testing_train_reads/len(training_species))
+    test_reads_per_spe = int(num_testing_test_reads/len(testing_species))
     reads_seed = seeds.INTER_READ_SEED
-    
-    all_train_files = list()
-    all_test_files = list()
-    
-    for _, dirs in train_dirs.items():
-        df_list = list()
+
+    df_list = list()
+    for species, dirs in spe_dirs.items():
         for d in dirs:
-            df_list.append(pd.read_csv(os.path.join(d, 'segmentation_report.txt'), sep = '\t', header = None))
+            df = pd.read_csv(os.path.join(d, 'segmentation_report.txt'), sep = '\t', header = None)
+            df = df[df[2] == 'Success']
+            df['species'] = species
+            df_list.append(df)
+    df = pd.concat(df_list)
+    df = df.sort_values('species')
+    df = df.reset_index()
 
-        df = pd.concat(df_list)
-        df = df[df[2] == 'Success']
+    train_reads = list()
+    test_reads = list()
 
-        # maintain train/test ratio in case of less reads
-        available_reads = len(df)
-        if available_reads > reads_per_spe:
-            num_train_reads = int((reads_per_spe/(train_test_ratio + 1)) * train_test_ratio)
-            num_test_reads = int(reads_per_spe/(train_test_ratio + 1))
-        else:
-            num_train_reads = int((available_reads/(train_test_ratio + 1)) * train_test_ratio)
-            num_test_reads = int(available_reads/(train_test_ratio + 1))
-
-        # sort and randomize order with reproducibility
-        read_files = sorted(df[0].tolist())
-        random.seed(reads_seed)
-        random.shuffle(read_files)
-
-        train_files = read_files[:num_train_reads]
-        test_files = read_files[num_train_reads:num_test_reads + num_train_reads]
-
-        reads_seed += 1
-        
-        all_train_files += train_files
-        all_test_files += test_files
-        
-    # do the same for the test species
-    reads_per_spe = int(num_testing_test_reads/len(test_dirs))
-    for _, dirs in test_dirs.items():
-        df_list = list()
-        for d in dirs:
-            df_list.append(pd.read_csv(os.path.join(d, 'segmentation_report.txt'), sep = '\t', header = None))
-
-        df = pd.concat(df_list)
-        df = df[df[2] == 'Success']
-        
-        available_reads = len(df)
-        
-        if available_reads == 0:
-            continue
-        elif available_reads > reads_per_spe:
-            num_test_reads = reads_per_spe
-        else:
-            num_test_reads = available_reads
-        
-        read_files = sorted(df[0].tolist())
+    for train_spe in training_species:
+        subdf = df[df['species'] == train_spe]
+        read_files = sorted(subdf[0].tolist())
         random.seed(reads_seed)
         random.shuffle(read_files)
         
-        test_files = read_files[:num_test_reads]
-        all_test_files += test_files
-        
+        if len(subdf) >= total_reads_per_spe:
+            
+            spe_tr = read_files[:int(train_reads_per_spe)]
+            spe_te = read_files[-int(traintest_reads_per_spe):]
+        else:
+            spe_tr = read_files[:-int(traintest_reads_per_spe)]
+            spe_te = read_files[-int(traintest_reads_per_spe):]
+
+        print(train_spe)
+        print('Train: ' + str(len(spe_tr)))
+        print('Test : ' + str(len(spe_te)))
+
+        GLOBAL_LIST.append({
+            'Task':'inter-species', 
+            'Species':train_spe, 
+            'Train':len(spe_tr), 
+            'Test':len(spe_te)
+        })
+
+        train_reads += spe_tr
+        test_reads += spe_te
+
+    for test_spe in testing_species:
+        subdf = df[df['species'] == train_spe]
+
+        read_files = sorted(subdf[0].tolist())
+        random.seed(reads_seed)
+        random.shuffle(read_files)
+
+        if len(subdf) >= test_reads_per_spe:
+            spe_tr = []
+            spe_te = read_files[:int(test_reads_per_spe)]
+        else:
+            spe_tr = []
+            spe_te = read_files
+
+        print(test_spe)
+        print('Train: ' + str(len(spe_tr)))
+        print('Test : ' + str(len(spe_te)))
+
+        GLOBAL_LIST.append({
+            'Task':'inter-species', 
+            'Species':test_spe, 
+            'Train':len(spe_tr), 
+            'Test':len(spe_te)
+        })
+
+        train_reads += spe_tr
+        test_reads += spe_te
+
+
     # write the results
     with open(os.path.join(output_dir, 'inter_task_train_reads.txt'), 'w') as f:
-        for r in all_train_files:
+        for r in train_reads:
             f.write(r + '\n')
             
     with open(os.path.join(output_dir, 'inter_task_test_reads.txt'), 'w') as f:
-        for r in all_test_files:
+        for r in test_reads:
             f.write(r + '\n')
     
-    return all_train_files, all_test_files
+    print('Inter-species: ')
+    print('    Train: ' + str(len(train_reads)))
+    print('    Test : ' + str(len(test_reads)))
+
+    return train_reads, test_reads
     
-
-
 
 def main(main_dir, output_dir, bindist_matrix, cluster_order, max_species, min_species, 
          inter_train, inter_traintest, inter_test, global_train, global_test, genome_split, human_train, human_test):
@@ -469,6 +525,8 @@ def main(main_dir, output_dir, bindist_matrix, cluster_order, max_species, min_s
             training_species.append(n)
         else:
             testing_species.append(n)
+    testing_species.append('Homo_sapiens')
+    testing_species.append('Lambda_phage')
     
     inter_reads_split(main_dir, training_species, testing_species, inter_train, inter_traintest, inter_test, output_dir)
     
@@ -478,10 +536,13 @@ def main(main_dir, output_dir, bindist_matrix, cluster_order, max_species, min_s
     for dd in alldirs:
         if re.search('Homo_sapiens', dd):
             dirs.append(dd)
-    split_human(dirs, human_train, human_test, seeds.HUMAN_SEED, seeds.HUMAN_TRAIN_ODD, output_dir)
+    split_human(dirs, human_train, human_test, seeds.HUMAN_SEED, seeds.HUMAN_TRAIN_ODD, output_dir, globaltask = False)
     
     # global
     global_split(main_dir, global_train, global_test, genome_split, output_dir)
+
+    table_save = pd.DataFrame(GLOBAL_LIST)
+    table_save.to_csv(os.path.join(output_dir, 'reads_per_task.csv'), header = True, index = False)
     
 if __name__ == "__main__":
     
