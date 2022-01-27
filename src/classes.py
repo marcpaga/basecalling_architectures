@@ -6,12 +6,12 @@ from abc import abstractmethod
 import numpy as np
 import random
 from pathlib import Path
-from fast_ctc_decode import beam_search, viterbi_search
+from fast_ctc_decode import beam_search, viterbi_search, crf_greedy_search, crf_beam_search
 import uuid
 import multiprocessing as mp
 from tqdm import tqdm
 
-from utils import read_metadata, decode_batch_greedy_ctc
+from utils import read_metadata, stitch_by_stride
 from read import read_fast5
 from normalization import normalize_signal_from_read_data, med_mad
 from constants import CTC_BLANK, BASES_CRF, S2S_PAD, S2S_EOS, S2S_SOS, S2S_OUTPUT_CLASSES
@@ -277,16 +277,10 @@ class BaseModelCTC(BaseModel):
             qscale (float)
             qbias (float)
         """
-
-        # p = p.detach()
-        # p = p.argmax(-1).permute(1, 0)
-        # p = p.cpu().numpy()
-        # decoded_predictions = decode_batch_greedy_ctc(y = p, 
-        #                                               decode_dict = self.dataloader_train.dataset.decoding_dict, 
-        #                                               blank_label = CTC_BLANK)
         
         alphabet = 'NACGT'
         decoded_predictions = list()
+        
         for i in range(p.shape[1]):
             seq, path = viterbi_search(p[:, i, :], alphabet, qstring = qstring, qscale = qscale, qbias = qbias, collapse_repeats = collapse_repeats)
             if return_path:
@@ -298,8 +292,9 @@ class BaseModelCTC(BaseModel):
 
     def decode_ctc_beamsearch(self, p, beam_size = 5, beam_cut_threshold = 0.1, collapse_repeats = True, *args, **kwargs):
 
-        alphabet = 'NACGT'
+        alphabet = BASES_CRF
         decoded_predictions = list()
+        
         for i in range(p.shape[1]):
             seq, _ = beam_search(p[:, i, :], alphabet, beam_size = beam_size, beam_cut_threshold = beam_cut_threshold, collapse_repeats = collapse_repeats)
             decoded_predictions.append(seq)
@@ -358,7 +353,7 @@ class BaseModelCRF(BaseModel):
         self.criterions = {'crf': self.seqdist.ctc_loss}
 
         
-    def decode(self, p, greedy = True):
+    def decode(self, p, greedy = True, *args, **kwargs):
         """Decode the predictions
         
         Args:
@@ -368,11 +363,12 @@ class BaseModelCRF(BaseModel):
             A (list) with the decoded strings
         """
         if greedy:
-            return self.decode_crf_greedy(p)
+            return self.decode_crf_greedy(p, *args, **kwargs)
         else:
-            return self.decode_crf_beamsearch(p)
+            return self.decode_crf_beamsearch(p, *args, **kwargs)
     
-    def decode_crf_greedy(self, y):
+    def decode_crf_greedy(self, probs_stack, qstring = False, qscale = 1.0, qbias = 1.0, return_path = False, read_len = None, 
+        chunksize = None, overlap = None, stride = None, *args, **kwargs):
         """Predict the sequences using a greedy approach
         
         Args:
@@ -380,12 +376,89 @@ class BaseModelCRF(BaseModel):
         Returns:
             A (list) with the decoded strings
         """
-        scores = self.seqdist.posteriors(y.to(torch.float32)) + 1e-8
-        tracebacks = self.seqdist.viterbi(scores.log()).to(torch.int16).T
-        return [self.seqdist.path_to_str(y) for y in tracebacks.cpu().numpy()]
 
-    def decode_crf_beamsearch(self, y):
-        raise NotImplementedError()
+        if isinstance(probs_stack, torch.Tensor):
+            scores = self.seqdist.posteriors(probs_stack.cuda().to(torch.float32)) + 1e-8
+            tracebacks = self.seqdist.viterbi(scores.log()).to(torch.int16).T
+            return [self.seqdist.path_to_str(y) for y in tracebacks.cpu().numpy()]
+
+        if isinstance(probs_stack, list):
+            trans_list = list()
+            for y in probs_stack:
+                scores = self.seqdist.posteriors(y.cuda().unsqueeze(1).to(torch.float32)) + 1e-8
+                betas = self.seqdist.backward_scores(scores.to(torch.float32))
+                trans, init = self.seqdist.compute_transition_probs(scores, betas)
+                trans = trans.to(torch.float32).transpose(0, 1)
+                trans_list.append(trans.cpu())
+            init = init.to(torch.float32).unsqueeze(1)
+            stiched = stitch_by_stride(
+                chunks = torch.vstack(trans_list), 
+                chunksize = chunksize, 
+                overlap = overlap, 
+                length = read_len, 
+                stride = stride, 
+                reverse=False
+            )
+
+            seq, path = crf_greedy_search(
+                network_output = stiched.detach().cpu().numpy(), 
+                init_state = init[0, 0].detach().cpu().numpy(), 
+                alphabet = BASES_CRF, 
+                qstring = qstring, 
+                qscale = qscale, 
+                qbias = qbias
+            )
+
+            if return_path:
+                return [(seq, path)]
+            else:
+                return [seq]
+
+    def decode_crf_beamsearch(self, probs_stack, beam_size = 5, beam_cut_threshold = 0.1, return_path = False, read_len = None, 
+        chunksize = None, overlap = None, stride = None,*args, **kwargs):
+        """Predict the sequences using a beam search
+        
+        Args:
+            y (tensor): tensor with scores in shape [timesteps, batch, classes]
+        Returns:
+            A (list) with the decoded strings
+        """
+
+        if isinstance(probs_stack, torch.Tensor):
+            scores = self.seqdist.posteriors(probs_stack.cuda().to(torch.float32)) + 1e-8
+            tracebacks = self.seqdist.viterbi(scores.log()).to(torch.int16).T
+            return [self.seqdist.path_to_str(y) for y in tracebacks.cpu().numpy()]
+
+        if isinstance(probs_stack, list):
+            trans_list = list()
+            for y in probs_stack:
+                scores = self.seqdist.posteriors(y.cuda().unsqueeze(1).to(torch.float32)) + 1e-8
+                betas = self.seqdist.backward_scores(scores.to(torch.float32))
+                trans, init = self.seqdist.compute_transition_probs(scores, betas)
+                trans = trans.to(torch.float32).transpose(0, 1)
+                trans_list.append(trans.cpu())
+            init = init.to(torch.float32).unsqueeze(1)
+            stiched = stitch_by_stride(
+                chunks = torch.vstack(trans_list), 
+                chunksize = chunksize, 
+                overlap = overlap, 
+                length = read_len, 
+                stride = stride, 
+                reverse=False
+            )
+
+            seq, path = crf_beam_search(
+                network_output = stiched.detach().cpu().numpy(), 
+                init_state = init[0, 0].detach().cpu().numpy(), 
+                alphabet = BASES_CRF, 
+                beam_size = beam_size,
+                beam_cut_threshold = beam_cut_threshold
+            )
+
+            if return_path:
+                return [(seq, path)]
+            else:
+                return [seq]
 
     def calculate_loss(self, y, p):
         """Calculates the losses for each criterion
@@ -452,7 +525,6 @@ class BaseModelImpl(BaseModelCTC, BaseModelCRF):
             p = p.exp().detach().cpu().numpy()
             return BaseModelCTC.decode(self, p.astype(np.float32), greedy = greedy, *args, **kwargs)
         if self.decoder_type == 'crf':
-            p = p.detach()
             return BaseModelCRF.decode(self, p, greedy, *args, **kwargs)
         
     def calculate_loss(self, y, p):
@@ -1206,27 +1278,38 @@ class BaseBasecaller:
 
     def decode_process(self, probs_stack, read_len, read_id):
 
-        stiched_p = self.stitch_by_stride(
-            chunks = probs_stack, 
-            chunksize = self.chunksize, 
-            overlap = self.overlap, 
-            length = read_len, 
-            stride = self.stride, 
-            reverse=False,
-        )
+        if self.model.decoder_type == 'ctc':
+            probs_stack = self.stitch_by_stride(
+                chunks = probs_stack, 
+                chunksize = self.chunksize, 
+                overlap = self.overlap, 
+                length = read_len, 
+                stride = self.stride, 
+                reverse = False,
+            )
+            probs_stack = probs_stack.unsqueeze(1)
+        elif self.model.decoder_type == 'crf':
+            probs_stack = [ps for ps in probs_stack]
+        else:
+            raise ValueError('Only crf and ctc decoders supported')
 
         if self.beam_size == 1:
             greedy = True
         else:
             greedy = False
 
-        seq = self.model.decode(stiched_p.unsqueeze(1), 
+        seq = self.model.decode(
+            probs_stack, 
             greedy = greedy, 
             qstring = True, 
             collapse_repeats = True, 
             return_path = True,
             beam_size = self.beam_size,
-            beam_cut_threshold = self.beam_threshold
+            beam_cut_threshold = self.beam_threshold,
+            read_len = read_len,
+            chunksize = self.chunksize, 
+            overlap = self.overlap, 
+            stride = self.stride
         )
 
         if isinstance(seq[0], tuple):
@@ -1260,6 +1343,7 @@ class BaseBasecaller:
             for s, n in zip(ss, nn):
                 p = self.model.predict_step({'x':x[s:n, :]})
                 p_list.append(p)
+
                 
             p = torch.hstack(p_list)
 
@@ -1271,7 +1355,7 @@ class BaseBasecaller:
 
             for read_id in np.unique(ids_arr):
                 w = np.where(ids_arr == read_id)[0]
-                read_stacks = p[:, w, :].permute(1, 0, 2).cpu()
+                read_stacks = p[:, w, :].permute(1, 0, 2)
                 read_len = batch['len'][0, w[0]].item()
 
                 fastq_string = self.decode_process(read_stacks, read_len, read_id)

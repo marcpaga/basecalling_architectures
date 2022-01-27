@@ -2,6 +2,7 @@
 """
 import zipfile
 import numpy as np
+import torch
 
 def stich_segments():
     """Stiches different predicted segments together
@@ -90,3 +91,43 @@ def find_runs(x):
         run_lengths = np.diff(np.append(run_starts, n))
 
         return run_values, run_starts, run_lengths
+
+def stitch_by_stride(chunks, chunksize, overlap, length, stride, reverse=False):
+        """
+        Stitch chunks together with a given overlap
+        
+        This works by calculating what the overlap should be between two outputed
+        chunks from the network based on the stride and overlap of the inital chunks.
+        The overlap section is divided in half and the outer parts of the overlap
+        are discarded and the chunks are concatenated. There is no alignment.
+        
+        Chunk1: AAAAAAAAAAAAAABBBBBCCCCC
+        Chunk2:               DDDDDEEEEEFFFFFFFFFFFFFF
+        Result: AAAAAAAAAAAAAABBBBBEEEEEFFFFFFFFFFFFFF
+        
+        Args:
+            chunks (tensor): predictions with shape [samples, length, classes]
+            chunk_size (int): initial size of the chunks
+            overlap (int): initial overlap of the chunks
+            length (int): original length of the signal
+            stride (int): stride of the model
+            reverse (bool): if the chunks are in reverse order
+            
+        Copied from https://github.com/nanoporetech/bonito
+        """
+        if chunks.shape[0] == 1: return chunks.squeeze(0)
+
+        semi_overlap = overlap // 2
+        start, end = semi_overlap // stride, (chunksize - semi_overlap) // stride
+        stub = (length - overlap) % (chunksize - overlap)
+        first_chunk_end = (stub + semi_overlap) // stride if (stub > 0) else end
+
+        if reverse:
+            chunks = list(chunks)
+            return torch.cat([
+                chunks[-1][:-start], *(x[-end:-start] for x in reversed(chunks[1:-1])), chunks[0][-first_chunk_end:]
+            ])
+        else:
+            return torch.cat([
+                chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
+            ])
