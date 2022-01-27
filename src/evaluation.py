@@ -222,7 +222,7 @@ def eval_pair(ref, que, read_id, phredq = None, align_method = 'parasail'):
         ref_nd = alignment.end_ref
 
         # calculate the local ends
-        local = np.where((np.array(list(long_cigar)) == 'X') | (np.array(list(long_cigar)) == '='))[0]
+        local = np.where((np.array(list(long_cigar)) == 'X') | (np.array(list(long_cigar)) == 'M'))[0]
         local_st = local[0]
         local_nd = local[-1]
         decoded_cigar = decoded_cigar[local_st:local_nd+1]
@@ -276,8 +276,9 @@ def eval_pair(ref, que, read_id, phredq = None, align_method = 'parasail'):
         longcigar_arr[np.where(local_arr[1, :] == '.')[0]] = 'X'
         longcigar_fixed = "".join(longcigar_arr.tolist())
 
-        local = np.where((np.array(list(longcigar_fixed)) == 'X') | (np.array(list(longcigar_fixed)) == '='))[0]
+        local = np.where((np.array(list(longcigar_fixed)) == 'X') | (np.array(list(longcigar_fixed)) == 'M'))[0]
         local_st = local[0]
+
         local_nd = local[-1]
         longcigar_fixed = longcigar_fixed[local_st:local_nd+1]
 
