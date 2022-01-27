@@ -32,18 +32,20 @@ if __name__ == "__main__":
 
     fast5_dataset = BaseFast5Dataset(fast5_list= args.file_list, buffer_size = 10)
 
+    model_folder_name = args.model+'_'+str(args.chunk_size)
+
     if args.output_file is None:
-        output_file = os.path.join(args.model_dir, args.task, args.model, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fastq')
+        output_file = os.path.join(args.model_dir, args.task, model_folder_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fastq')
     else:
         output_file = args.output_file
 
     # load model
-    log = df = pd.read_csv(os.path.join(args.model_dir, args.task, args.model, 'train.log'))
+    log = pd.read_csv(os.path.join(args.model_dir, args.task, model_folder_name, 'train.log'))
     log = log[log['checkpoint'] == 'yes']
     best_step = log['step'].iloc[np.argmax(log['metric.accuracy.val'])]
-    checkpoint_file = os.path.join(args.model_dir, args.task, args.model, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
+    checkpoint_file = os.path.join(args.model_dir, args.task, model_folder_name, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
 
-    use_amp = True
+    use_amp = False
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
     if args.model == 'bonito':

@@ -51,7 +51,7 @@ if __name__ == "__main__":
     best_step = log['step'].iloc[np.argmax(log['metric.accuracy.val'])]
     checkpoint_file = os.path.join(args.model_dir, args.task, args.model_name, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
 
-    use_amp = True
+    use_amp = False
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
     model = GridAnalysisModel(
         cnn_type = cnn_type, 
