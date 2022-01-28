@@ -124,7 +124,7 @@ rule basecall:
     
     resources:
         job_name = lambda wildcards: 'basecall_' + wildcards.model,
-        time = '6:00:00',
+        time = '1-00:00:00',
         mem_mb = '64G',
         cpus = 4,
         partition = 'gpu',
