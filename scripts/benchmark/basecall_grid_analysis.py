@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../models')))
 import argparse
 
-from classes import BaseBasecaller, BaseFast5Dataset
+from classes import BasecallerImpl, BaseFast5Dataset
 from gridmodel import GridAnalysisModel # pyright: reportMissingImports=false
 
 import pandas as pd
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     model.load_state_dict(state_dict['model_state'])
     model = model.to(device)
 
-    basecaller = BaseBasecaller(
+    basecaller = BasecallerImpl(
         dataset = fast5_dataset, 
         model = model, 
         batch_size = args.batch_size, 
@@ -82,5 +82,5 @@ if __name__ == "__main__":
         beam_threshold = args.beam_threshold,
     )
 
-    basecaller.basecall()
+    basecaller.basecall(verbose = True)
 

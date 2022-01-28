@@ -366,99 +366,97 @@ class BaseModelCRF(BaseModel):
             return self.decode_crf_greedy(p, *args, **kwargs)
         else:
             return self.decode_crf_beamsearch(p, *args, **kwargs)
+
+    def compute_scores(self, probs, use_fastctc = False):
+        """
+        Args:
+            probs (cuda tensor): [length, batch, channels]
+            use_fastctc (bool)
+        """
+        if use_fastctc:
+            scores = self.seqdist.posteriors(probs.cuda().to(torch.float32)) + 1e-8
+            betas = self.seqdist.backward_scores(scores.to(torch.float32))
+            trans, init = self.seqdist.compute_transition_probs(scores, betas)
+            trans = trans.to(torch.float32).transpose(0, 1)
+            init = init.to(torch.float32).unsqueeze(1)
+            return (trans, init)
+        else:
+            scores = self.seqdist.posteriors(probs.cuda().to(torch.float32)) + 1e-8
+            tracebacks = self.seqdist.viterbi(scores.log()).to(torch.int16).T
+            return tracebacks
+
+    def _decode_crf_greedy_fastctc(self, tracebacks, init, qstring, qscale, qbias, return_path):
+        """
+        Args:
+            tracebacks (np.array): [len, states, bases]
+            init (np.array): [states]
+            qstring (bool)
+            qscale (float)
+            qbias (float)
+            return_path (bool)
+        """
+
+        seq, path = crf_greedy_search(
+            network_output = tracebacks, 
+            init_state = init, 
+            alphabet = BASES_CRF, 
+            qstring = qstring, 
+            qscale = qscale, 
+            qbias = qbias
+        )
+        if return_path:
+            return seq, path
+        else:
+            return seq
     
-    def decode_crf_greedy(self, probs_stack, qstring = False, qscale = 1.0, qbias = 1.0, return_path = False, read_len = None, 
-        chunksize = None, overlap = None, stride = None, *args, **kwargs):
+    def decode_crf_greedy(self, probs, use_fastctc = False, qstring = False, qscale = 1.0, qbias = 1.0, return_path = False, *args, **kwargs):
         """Predict the sequences using a greedy approach
         
         Args:
-            y (tensor): tensor with scores in shape [timesteps, batch, classes]
+            probs (tensor): tensor with scores in shape [timesteps, batch, classes]
         Returns:
             A (list) with the decoded strings
         """
 
-        if isinstance(probs_stack, torch.Tensor):
-            scores = self.seqdist.posteriors(probs_stack.cuda().to(torch.float32)) + 1e-8
-            tracebacks = self.seqdist.viterbi(scores.log()).to(torch.int16).T
-            return [self.seqdist.path_to_str(y) for y in tracebacks.cpu().numpy()]
+        if use_fastctc:
+            tracebacks, init = self.compute_scores(probs, use_fastctc)
+            return self._decode_crf_greedy_fastctc(tracebacks, init, qstring, qscale, qbias, return_path)
+        
+        else:
+            return [self.seqdist.path_to_str(y) for y in self.compute_scores(probs, use_fastctc).cpu().numpy()]
 
-        if isinstance(probs_stack, list):
-            trans_list = list()
-            for y in probs_stack:
-                scores = self.seqdist.posteriors(y.cuda().unsqueeze(1).to(torch.float32)) + 1e-8
-                betas = self.seqdist.backward_scores(scores.to(torch.float32))
-                trans, init = self.seqdist.compute_transition_probs(scores, betas)
-                trans = trans.to(torch.float32).transpose(0, 1)
-                trans_list.append(trans.cpu())
-            init = init.to(torch.float32).unsqueeze(1)
-            stiched = stitch_by_stride(
-                chunks = torch.vstack(trans_list), 
-                chunksize = chunksize, 
-                overlap = overlap, 
-                length = read_len, 
-                stride = stride, 
-                reverse=False
-            )
+    def _decode_crf_beamsearch_fastctc(self, tracebacks, init, beam_size, beam_cut_threshold, return_path):
+        """
+        Args
+            tracebacks (np.array): [len, states, bases]
+            init (np.array): [states]
+            beam_size (int)
+            beam_cut_threshold (float)
+            return_path (bool)
+        """
+        seq, path = crf_beam_search(
+            network_output = tracebacks, 
+            init_state = init, 
+            alphabet = BASES_CRF, 
+            beam_size = beam_size,
+            beam_cut_threshold = beam_cut_threshold
+        )
+        if return_path:
+            return seq, path
+        else:
+            return seq
 
-            seq, path = crf_greedy_search(
-                network_output = stiched.detach().cpu().numpy(), 
-                init_state = init[0, 0].detach().cpu().numpy(), 
-                alphabet = BASES_CRF, 
-                qstring = qstring, 
-                qscale = qscale, 
-                qbias = qbias
-            )
-
-            if return_path:
-                return [(seq, path)]
-            else:
-                return [seq]
-
-    def decode_crf_beamsearch(self, probs_stack, beam_size = 5, beam_cut_threshold = 0.1, return_path = False, read_len = None, 
-        chunksize = None, overlap = None, stride = None,*args, **kwargs):
+    def decode_crf_beamsearch(self, probs, beam_size = 5, beam_cut_threshold = 0.1, return_path = False, *args, **kwargs):
         """Predict the sequences using a beam search
         
         Args:
-            y (tensor): tensor with scores in shape [timesteps, batch, classes]
+            probs (tensor): tensor with scores in shape [timesteps, batch, classes]
         Returns:
             A (list) with the decoded strings
         """
 
-        if isinstance(probs_stack, torch.Tensor):
-            scores = self.seqdist.posteriors(probs_stack.cuda().to(torch.float32)) + 1e-8
-            tracebacks = self.seqdist.viterbi(scores.log()).to(torch.int16).T
-            return [self.seqdist.path_to_str(y) for y in tracebacks.cpu().numpy()]
-
-        if isinstance(probs_stack, list):
-            trans_list = list()
-            for y in probs_stack:
-                scores = self.seqdist.posteriors(y.cuda().unsqueeze(1).to(torch.float32)) + 1e-8
-                betas = self.seqdist.backward_scores(scores.to(torch.float32))
-                trans, init = self.seqdist.compute_transition_probs(scores, betas)
-                trans = trans.to(torch.float32).transpose(0, 1)
-                trans_list.append(trans.cpu())
-            init = init.to(torch.float32).unsqueeze(1)
-            stiched = stitch_by_stride(
-                chunks = torch.vstack(trans_list), 
-                chunksize = chunksize, 
-                overlap = overlap, 
-                length = read_len, 
-                stride = stride, 
-                reverse=False
-            )
-
-            seq, path = crf_beam_search(
-                network_output = stiched.detach().cpu().numpy(), 
-                init_state = init[0, 0].detach().cpu().numpy(), 
-                alphabet = BASES_CRF, 
-                beam_size = beam_size,
-                beam_cut_threshold = beam_cut_threshold
-            )
-
-            if return_path:
-                return [(seq, path)]
-            else:
-                return [seq]
+        tracebacks, init = self.compute_scores(probs, use_fastctc = True)
+        return self._decode_crf_beamsearch_fastctc(tracebacks, init, beam_size, beam_cut_threshold, return_path)
 
     def calculate_loss(self, y, p):
         """Calculates the losses for each criterion
@@ -1215,20 +1213,12 @@ class BaseFast5Dataset(Dataset):
         return out
 
 
-class BaseBasecaller:
-    """A base Basecaller class that is used to basecall complete reads
-    """
-    
+class BaseBasecaller():
+
     def __init__(self, dataset, model, batch_size, output_file, n_cores = 4, chunksize = 2000, overlap = 200, stride = None, beam_size = 1, beam_threshold = 0.1):
-        """
-        Args:
-            model (nn.Module): a model that has the following methods:
-                predict, decode
-            chunk_size (int): length of the chunks that a read will be divided into
-            overlap (int): amount of overlap between consecutive chunks
-            batch_size (int): batch size to forward through the network
-        """
-        
+
+        assert isinstance(dataset, BaseFast5Dataset)
+
         self.dataset = DataLoader(dataset, batch_size=1, shuffle=False, num_workers = 2)
         self.model = model
         self.batch_size = batch_size
@@ -1242,56 +1232,95 @@ class BaseBasecaller:
             self.stride = stride
         self.beam_size = beam_size
         self.beam_threshold = beam_threshold
-        #self.multiprocessing()
 
-    def multiprocessing(self):
-
-        manager = mp.Manager()
-        #self.decoder_queue = manager.Queue() 
-        self.writer_queue = manager.Queue()
-        pool = mp.Pool(1) # pool for multiprocessing
-        watcher = pool.apply_async(self.fastq_listener_writer)
-
-    def fastq_listener_writer(self):
-        """Listens to outputs on the queue and writes to a file
-
-        Input in queue should be the string to be writen already
-        with the \n
+    def stich(self, chunks, method, *args, **kwargs):
         """
+        Stitch chunks together with a given overlap
         
-        with open(self.output_file, 'a') as f:
-            while True:
-                m = self.writer_queue.get()
-                if m == 'kill':
-                    break
-                f.write(str(m))
-                f.flush()
+        Args:
+            chunks (tensor): predictions with shape [samples, length, classes]
+        """
 
-    def decode_process_queue(self):
+        if method == 'stride':
+            return self.stich_by_stride(chunks, *args, **kwargs)
+        else:
+            raise NotImplementedError()
 
-        while True:
-            m = self.decoder_queue.get()
-            if m == 'kill':
-                break
+    def basecall(self, verbose = True):
+        raise NotImplementedError()
+    
+    def stitch_by_stride(self, chunks, chunksize, overlap, length, stride, reverse=False):
+        """
+        Stitch chunks together with a given overlap
+        
+        This works by calculating what the overlap should be between two outputed
+        chunks from the network based on the stride and overlap of the inital chunks.
+        The overlap section is divided in half and the outer parts of the overlap
+        are discarded and the chunks are concatenated. There is no alignment.
+        
+        Chunk1: AAAAAAAAAAAAAABBBBBCCCCC
+        Chunk2:               DDDDDEEEEEFFFFFFFFFFFFFF
+        Result: AAAAAAAAAAAAAABBBBBEEEEEFFFFFFFFFFFFFF
+        
+        Args:
+            chunks (tensor): predictions with shape [samples, length, *]
+            chunk_size (int): initial size of the chunks
+            overlap (int): initial overlap of the chunks
+            length (int): original length of the signal
+            stride (int): stride of the model
+            reverse (bool): if the chunks are in reverse order
+            
+        Copied from https://github.com/nanoporetech/bonito
+        """
 
-            return self.decode_process(m[0], m[1], m[2])
+        if isinstance(chunks, np.ndarray):
+            chunks = torch.from_numpy(chunks)
+
+        if chunks.shape[0] == 1: return chunks.squeeze(0)
+
+        semi_overlap = overlap // 2
+        start, end = semi_overlap // stride, (chunksize - semi_overlap) // stride
+        stub = (length - overlap) % (chunksize - overlap)
+        first_chunk_end = (stub + semi_overlap) // stride if (stub > 0) else end
+
+        if reverse:
+            chunks = list(chunks)
+            return torch.cat([
+                chunks[-1][:-start], *(x[-end:-start] for x in reversed(chunks[1:-1])), chunks[0][-first_chunk_end:]
+            ])
+        else:
+            return torch.cat([
+                chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
+            ])
+
+class BasecallerCTC(BaseBasecaller):
+    """A base Basecaller class that is used to basecall complete reads
+    """
+    
+    def __init__(self, *args, **kwargs):
+        """
+        Args:
+            model (nn.Module): a model that has the following methods:
+                predict, decode
+            chunk_size (int): length of the chunks that a read will be divided into
+            overlap (int): amount of overlap between consecutive chunks
+            batch_size (int): batch size to forward through the network
+        """
+        super(BasecallerCTC, self).__init__(*args, **kwargs)
+
 
     def decode_process(self, probs_stack, read_len, read_id):
 
-        if self.model.decoder_type == 'ctc':
-            probs_stack = self.stitch_by_stride(
-                chunks = probs_stack, 
-                chunksize = self.chunksize, 
-                overlap = self.overlap, 
-                length = read_len, 
-                stride = self.stride, 
-                reverse = False,
-            )
-            probs_stack = probs_stack.unsqueeze(1)
-        elif self.model.decoder_type == 'crf':
-            probs_stack = [ps for ps in probs_stack]
-        else:
-            raise ValueError('Only crf and ctc decoders supported')
+    
+        probs_stack = self.stitch_by_stride(
+            chunks = probs_stack, 
+            chunksize = self.chunksize, 
+            overlap = self.overlap, 
+            length = read_len, 
+            stride = self.stride, 
+            reverse = False,
+        )
+        probs_stack = probs_stack.unsqueeze(1)
 
         if self.beam_size == 1:
             greedy = True
@@ -1325,8 +1354,7 @@ class BaseBasecaller:
             fastq_string += seq[0] + '\n'
             fastq_string += '+\n'
             fastq_string += '?'*len(seq[0]) + '\n'
-        
-        #self.writer_queue.put(fastq_string)
+    
         return fastq_string
 
     def basecall(self, verbose = True):
@@ -1362,64 +1390,95 @@ class BaseBasecaller:
                 with open(self.output_file, 'a') as f:
                     f.write(str(fastq_string))
                     f.flush()
-                
-                #self.decoder_queue.put((read_stacks, read_len, read_id))
-        
-        #self.decoder_queue.put('kill')
-        #self.writer_queue.put('kill')
+            
 
         return None
     
-    
-    def stich(self, chunks, method, *args, **kwargs):
-        """
-        Stitch chunks together with a given overlap
-        
-        Args:
-            chunks (tensor): predictions with shape [samples, length, classes]
-        """
 
-        if method == 'stride':
-            return self.stich_by_stride(chunks, *args, **kwargs)
-        else:
-            raise NotImplementedError()
+
+class BasecallerCRF(BaseBasecaller):
+
+    def __init__(self, *args, **kwargs):
+        super(BasecallerCRF, self).__init__(*args, **kwargs)
+
+        assert self.dataset.dataset.buffer_size == 1
     
-    def stitch_by_stride(self, chunks, chunksize, overlap, length, stride, reverse=False):
-        """
-        Stitch chunks together with a given overlap
-        
-        This works by calculating what the overlap should be between two outputed
-        chunks from the network based on the stride and overlap of the inital chunks.
-        The overlap section is divided in half and the outer parts of the overlap
-        are discarded and the chunks are concatenated. There is no alignment.
-        
-        Chunk1: AAAAAAAAAAAAAABBBBBCCCCC
-        Chunk2:               DDDDDEEEEEFFFFFFFFFFFFFF
-        Result: AAAAAAAAAAAAAABBBBBEEEEEFFFFFFFFFFFFFF
-        
-        Args:
-            chunks (tensor): predictions with shape [samples, length, classes]
-            chunk_size (int): initial size of the chunks
-            overlap (int): initial overlap of the chunks
-            length (int): original length of the signal
-            stride (int): stride of the model
-            reverse (bool): if the chunks are in reverse order
+    def basecall(self, verbose = True, qscale = 1.0, qbias = 1.0):
+        # iterate over the data
+        for batch in tqdm(self.dataset, disable = not verbose):
+
+            ids = batch['id'].squeeze(0)
+            ids_arr = np.zeros((ids.shape[0], ), dtype = 'U36')
+            for i in range(ids.shape[0]):
+                ids_arr[i] = str(uuid.UUID(fields=ids[i].tolist()))
+
+            assert len(np.unique(ids_arr)) == 1
+            read_id = np.unique(ids_arr)[0]
             
-        Copied from https://github.com/nanoporetech/bonito
-        """
-        if chunks.shape[0] == 1: return chunks.squeeze(0)
+            x = batch['x'].squeeze(0)
+            l = x.shape[0]
+            ss = torch.arange(0, l, self.batch_size)
+            nn = ss + self.batch_size
 
-        semi_overlap = overlap // 2
-        start, end = semi_overlap // stride, (chunksize - semi_overlap) // stride
-        stub = (length - overlap) % (chunksize - overlap)
-        first_chunk_end = (stub + semi_overlap) // stride if (stub > 0) else end
+            transition_scores = list()
+            for s, n in zip(ss, nn):
+                p = self.model.predict_step({'x':x[s:n, :]})
+                scores = self.model.compute_scores(p, use_fastctc=True)
+                transition_scores.append(scores[0].cpu())
+            init = scores[1][0, 0].cpu()
 
-        if reverse:
-            chunks = list(chunks)
-            return torch.cat([
-                chunks[-1][:-start], *(x[-end:-start] for x in reversed(chunks[1:-1])), chunks[0][-first_chunk_end:]
-            ])
-        else:
-            return torch.cat([
-                chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
-            ])
+            stacked_transitions = self.stitch_by_stride(
+                chunks = np.vstack(transition_scores), 
+                chunksize = self.chunksize, 
+                overlap = self.overlap, 
+                length = batch['len'].squeeze(0)[0].item(), 
+                stride = self.stride
+            )
+
+
+            if self.beam_size == 1:
+                seq, path = self.model._decode_crf_greedy_fastctc(
+                    tracebacks = stacked_transitions.numpy(), 
+                    init = init.numpy(), 
+                    qstring = True, 
+                    qscale = qscale, 
+                    qbias = qbias,
+                    return_path = True
+                )
+
+                fastq_string = '@'+str(read_id)+'\n'
+                fastq_string += seq[:len(path)] + '\n'
+                fastq_string += '+\n'
+                fastq_string += seq[len(path):] + '\n'
+                
+            else:
+                seq = self.model._decode_crf_beamsearch_fastctc(
+                    tracebacks = stacked_transitions.numpy(), 
+                    init = init.numpy(), 
+                    beam_size = self.beam_size, 
+                    beam_cut_threshold = self.beam_threshold, 
+                    return_path = False
+                )
+
+                fastq_string = '@'+str(read_id)+'\n'
+                fastq_string += seq + '\n'
+                fastq_string += '+\n'
+                fastq_string += '?'*len(seq) + '\n'
+            
+            with open(self.output_file, 'a') as f:
+                f.write(str(fastq_string))
+                f.flush()
+
+            
+class BasecallerImpl(BasecallerCTC, BasecallerCRF):
+
+    def __init__(self, *args, **kwargs):
+        super(BasecallerImpl, self).__init__(*args, **kwargs)
+
+    def basecall(self, verbose, *args, **kwargs):
+
+        if self.model.decoder_type == 'ctc':
+            return BasecallerCTC.basecall(self, verbose = verbose, *args, **kwargs)
+
+        if self.model.decoder_type == 'crf':
+            return BasecallerCRF.basecall(self, verbose = verbose, *args, **kwargs)

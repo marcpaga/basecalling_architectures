@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../models')))
 import argparse
 
-from classes import BaseBasecaller, BaseFast5Dataset
+from classes import BasecallerImpl, BaseFast5Dataset
 
 import pandas as pd
 import numpy as np
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     parser.add_argument("--chunk-size", type=int)
     args = parser.parse_args()
 
-    fast5_dataset = BaseFast5Dataset(fast5_list= args.file_list, buffer_size = 10)
+    fast5_dataset = BaseFast5Dataset(fast5_list= args.file_list, buffer_size = 1)
 
     model_folder_name = args.model+'_'+str(args.chunk_size)
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
     model.load_state_dict(state_dict['model_state'])
     model = model.to(device)
 
-    basecaller = BaseBasecaller(
+    basecaller = BasecallerImpl(
         dataset = fast5_dataset, 
         model = model, 
         batch_size = args.batch_size, 
@@ -88,5 +88,5 @@ if __name__ == "__main__":
         beam_threshold = args.beam_threshold,
     )
 
-    basecaller.basecall()
+    basecaller.basecall(verbose = True)
 
