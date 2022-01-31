@@ -67,7 +67,10 @@ def transform_name(name):
         new_name += ' - '
         new_name += model_name_transformer[name_components[1]]
     else:
-        new_name = model_name_transformer[name_components[0]]
+        try:
+            new_name = model_name_transformer[name_components[0]]
+        except KeyError:
+            return "_".join(name_components)
 
     return new_name
 
@@ -119,7 +122,7 @@ def basecalled_reads_counts(df, output_dir_tables = None, output_dir_plots = Non
 
     return f, pdf_to_write
 
-def main_rates(df, normalization_column = 'len_reference', output_dir_tables = None, output_dir_plots = None, **kwargs):
+def main_rates(df, normalization_column = 'len_reference', output_dir_tables = None, output_dir_plots = None, remove_zeros = False, **kwargs):
 
     bases = ['A', 'C', 'G', 'T']
     match_columns = list()
@@ -182,6 +185,8 @@ def main_rates(df, normalization_column = 'len_reference', output_dir_tables = N
             plot_df = df[df['model'] == model_name]
             x = np.array(plot_df[metric])
             x = x[~np.isnan(x)]
+            if remove_zeros:
+                x = x[x > 0]
             
             medians.append(np.median(x))
         medians = np.array(medians)
@@ -201,6 +206,8 @@ def main_rates(df, normalization_column = 'len_reference', output_dir_tables = N
 
             x = np.array(plot_df[metric])
             x = x[~np.isnan(x)]
+            if remove_zeros:
+                x = x[x > 0]
 
             if metric == 'match_rate':
                 pdf_to_write['Model'].append(transform_name(model_name))
