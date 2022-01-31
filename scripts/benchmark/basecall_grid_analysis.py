@@ -52,7 +52,7 @@ if __name__ == "__main__":
     checkpoint_file = os.path.join(args.model_dir, args.task, args.model_name, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
 
     use_amp = False
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    scaler = None
     model = GridAnalysisModel(
         cnn_type = cnn_type, 
         encoder_type = encoder_type, 

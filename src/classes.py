@@ -278,7 +278,7 @@ class BaseModelCTC(BaseModel):
             qbias (float)
         """
         
-        alphabet = 'NACGT'
+        alphabet = BASES_CRF
         decoded_predictions = list()
         
         for i in range(p.shape[1]):
@@ -294,7 +294,6 @@ class BaseModelCTC(BaseModel):
 
         alphabet = BASES_CRF
         decoded_predictions = list()
-        
         for i in range(p.shape[1]):
             seq, _ = beam_search(p[:, i, :], alphabet, beam_size = beam_size, beam_cut_threshold = beam_cut_threshold, collapse_repeats = collapse_repeats)
             decoded_predictions.append(seq)
@@ -1310,7 +1309,6 @@ class BasecallerCTC(BaseBasecaller):
 
 
     def decode_process(self, probs_stack, read_len, read_id):
-
     
         probs_stack = self.stitch_by_stride(
             chunks = probs_stack, 
@@ -1371,7 +1369,6 @@ class BasecallerCTC(BaseBasecaller):
             for s, n in zip(ss, nn):
                 p = self.model.predict_step({'x':x[s:n, :]})
                 p_list.append(p)
-
                 
             p = torch.hstack(p_list)
 

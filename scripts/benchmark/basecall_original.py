@@ -46,7 +46,7 @@ if __name__ == "__main__":
     checkpoint_file = os.path.join(args.model_dir, args.task, model_folder_name, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
 
     use_amp = False
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    scaler = None
 
     if args.model == 'bonito':
         from bonito.model import BonitoModel as Model# pyright: reportMissingImports=false
