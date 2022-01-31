@@ -1401,10 +1401,11 @@ class BasecallerCRF(BaseBasecaller):
     def __init__(self, *args, **kwargs):
         super(BasecallerCRF, self).__init__(*args, **kwargs)
 
-        assert self.dataset.dataset.buffer_size == 1
-    
     def basecall(self, verbose = True, qscale = 1.0, qbias = 1.0):
         # iterate over the data
+
+        assert self.dataset.dataset.buffer_size == 1
+        
         for batch in tqdm(self.dataset, disable = not verbose):
 
             ids = batch['id'].squeeze(0)
