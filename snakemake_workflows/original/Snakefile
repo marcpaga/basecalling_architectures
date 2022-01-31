@@ -153,7 +153,7 @@ rule basecall:
 
 rule train:
     input:
-        data_dir=os.path.join(config['data_dir'], '{task}', '{win}.0'),
+        data_dir=ancient(os.path.join(config['data_dir'], '{task}', '{win}.0')),
         output_dir=config['model_dir']
 
     output:

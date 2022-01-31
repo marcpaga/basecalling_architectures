@@ -128,7 +128,7 @@ rule basecall:
 
     resources:
         job_name = lambda wildcards: 'basecall_' + get_model_name_folder(wildcards.cnn, wildcards.enc, wildcards.dec, wildcards.con, wildcards.win),
-        time = '6:00:00',
+        time = '18:00:00',
         mem_mb = '64G',
         cpus = 4,
         partition = 'gpu',
@@ -157,7 +157,7 @@ rule basecall:
 
 rule train:
     input:
-        data_dir=os.path.join(config['data_dir'], '{task}', '{win}.0'),
+        data_dir=ancient(os.path.join(config['data_dir'], '{task}', '{win}.0')),
         output_dir=config['model_dir']
 
     output:
