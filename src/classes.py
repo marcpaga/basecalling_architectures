@@ -373,7 +373,7 @@ class BaseModelCRF(BaseModel):
             use_fastctc (bool)
         """
         if use_fastctc:
-            scores = self.seqdist.posteriors(probs.cuda().to(torch.float32)) + 1e-8
+            scores = probs.cuda().to(torch.float32)
             betas = self.seqdist.backward_scores(scores.to(torch.float32))
             trans, init = self.seqdist.compute_transition_probs(scores, betas)
             trans = trans.to(torch.float32).transpose(0, 1)
