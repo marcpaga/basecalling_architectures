@@ -29,9 +29,10 @@ if __name__ == "__main__":
     parser.add_argument("--beam-threshold", type=float)
     parser.add_argument("--model-stride", type=int, default = None)
     parser.add_argument("--chunk-size", type=int)
+    parser.add_argument("--buffer-size", type=int, default = 10)
     args = parser.parse_args()
 
-    fast5_dataset = BaseFast5Dataset(fast5_list= args.file_list, buffer_size = 10)
+    fast5_dataset = BaseFast5Dataset(fast5_list= args.file_list, buffer_size = args.buffer_size)
 
     config = args.model_name.split('_')
     if args.output_file is None:
