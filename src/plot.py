@@ -66,6 +66,8 @@ def transform_name(name):
         new_name += model_name_transformer[name_components[0]]
         new_name += ' - '
         new_name += model_name_transformer[name_components[1]]
+        new_name += ' - '
+        new_name += model_name_transformer[name_components[2]]
     else:
         try:
             new_name = model_name_transformer[name_components[0]]
@@ -145,17 +147,17 @@ def main_rates(df, normalization_column = 'len_reference', output_dir_tables = N
                         else:
                             mismatch_columns.append(b1 + b2 + '>' + b3 + b4)
     
-    df['matches'] = df[match_columns].sum(axis=1)
-    df['mismatches'] = df[mismatch_columns].sum(axis=1)
-    df['insertions'] = df[insertion_columns].sum(axis=1)
-    df['deletions'] = df[deletion_columns].sum(axis=1)
-    df['len_alignment'] = df[['matches', 'mismatches', 'insertions', 'deletions' ]].sum(axis=1)
-    df['len_alignment'] += 2
+    df.loc[:, 'matches'] = df[match_columns].sum(axis=1)
+    df.loc[:, 'mismatches'] = df[mismatch_columns].sum(axis=1)
+    df.loc[:, 'insertions'] = df[insertion_columns].sum(axis=1)
+    df.loc[:, 'deletions'] = df[deletion_columns].sum(axis=1)
+    df.loc[:, 'len_alignment'] = df[['matches', 'mismatches', 'insertions', 'deletions' ]].sum(axis=1)
+    df.loc[:, 'len_alignment'] += 2
 
-    df['match_rate'] = df['matches']/df[normalization_column]
-    df['mismatch_rate'] = df['mismatches']/df[normalization_column]
-    df['insertion_rate'] = df['insertions']/df[normalization_column]
-    df['deletion_rate'] = df['deletions']/df[normalization_column]
+    df.loc[:, 'match_rate'] = df['matches']/df[normalization_column]
+    df.loc[:, 'mismatch_rate'] = df['mismatches']/df[normalization_column]
+    df.loc[:, 'insertion_rate'] = df['insertions']/df[normalization_column]
+    df.loc[:, 'deletion_rate'] = df['deletions']/df[normalization_column]
 
     pdf_to_write = {
         "Model":list(),
@@ -391,7 +393,6 @@ def calculate_signatures(model_df):
 def signatures_plot(df, model_name, output_dir_plots = None, **kwargs):
 
 
-    model_name = 'mincall_urnano_ctc_True_2000'
     model_df = df[df['model'] == model_name]
 
     signatures_df = calculate_signatures(model_df)
@@ -404,7 +405,7 @@ def signatures_plot(df, model_name, output_dir_plots = None, **kwargs):
         plot_df = plot_df.sort_values('Error')
         sns.histplot(x = "Context", hue = "Error", weights='Rate', data = plot_df, 
                     multiple='stack', ax = axs[0, i])
-        axs[0, i].set_ylabel('Fraction')
+        #axs[0, i].set_ylabel('Fraction')
         axs[0, i].set_xlabel(None)
         axs[0, i].set_title(b)
         axs[0, i].set_ylim(0, 0.55)
