@@ -124,12 +124,13 @@ rule basecall:
         beam_threshold = lambda wildcards: wildcards.beam_threshold,
         window_size = lambda wildcards: wildcards.win,
         batch_size = config["batch_size"],
-        task = lambda wildcards: wildcards.task
+        task = lambda wildcards: wildcards.task,
+        buffer_size = config['buffer_size']
 
     resources:
         job_name = lambda wildcards: 'basecall_' + get_model_name_folder(wildcards.cnn, wildcards.enc, wildcards.dec, wildcards.con, wildcards.win),
         time = '18:00:00',
-        mem_mb = '64G',
+        mem_mb = '128G',
         cpus = 4,
         partition = 'gpu',
         gpus = 'RTX6000:1',
@@ -152,6 +153,7 @@ rule basecall:
         ' --batch-size {params.batch_size} '\
         ' --beam-size {params.beam_size} '\
         ' --beam-threshold {params.beam_threshold} '\
+        ' --buffer-size {params.buffer_size} '\
         ' --chunk-size {params.window_size}; '
 
 
