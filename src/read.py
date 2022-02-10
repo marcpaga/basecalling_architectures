@@ -183,9 +183,6 @@ def read_fasta(fasta_file):
     return fasta_dict
 
 def iter_fastq(fastq_file):
-    """Read a fastq file iteratively
-    """
-def iter_fastq(fastq_file):
 
     c = 0
     with open(fastq_file, 'r') as f:
