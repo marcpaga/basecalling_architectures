@@ -97,3 +97,22 @@ class HalcyonInceptionBlock(nn.Module):
     def _calculate_padding(self, l, s, k):
 
         return int((l*s - s + k - l)/2)
+
+class HalcyonLSTM(nn.Module):
+
+    def __init__(self, input_size, hidden_size, num_layers, bidirectional, proj_size):
+        super(HalcyonLSTM, self).__init__()
+
+        # this is to make it compatible with S2SModel
+        self.bidirectional = False
+
+        self.lstm = nn.LSTM(input_size = input_size, hidden_size = hidden_size, num_layers = num_layers, bidirectional = bidirectional, proj_size = proj_size)
+
+    def forward(self, x):
+
+        output, hidden = self.lstm(x)
+        last_hidden = hidden[0][-1, :, :].unsqueeze(0)
+        output = output[:, :, output.shape[2]//2:]
+
+        hidden = (last_hidden, torch.zeros(last_hidden.shape, device = last_hidden.device, requires_grad = True))
+        return output, hidden
