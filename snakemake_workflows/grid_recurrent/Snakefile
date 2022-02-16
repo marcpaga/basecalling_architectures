@@ -30,7 +30,7 @@ rule all:
             enc = config['encoder_type'],
             dec = config['decoder_type'],
             at  = config['attention_type'],
-            ap  = config['attention_pos']
+            ap  = config['attention_pos'],
             mo = flag_to_str(config['monotonic']),
             win = config['window_size'],
             task = config['task'],
