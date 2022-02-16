@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from classes import BaseNanoporeDataset
 from schedulers import GradualWarmupScheduler
-from constants import NON_RECURRENT_DECODING_DICT, NON_RECURRENT_ENCODING_DICT
+from constants import NON_RECURRENT_DECODING_DICT, NON_RECURRENT_ENCODING_DICT, RECURRENT_DECODING_DICT, RECURRENT_ENCODING_DICT
 
 import torch
 from torch.utils.data import DataLoader
@@ -59,6 +59,7 @@ if __name__ == '__main__':
         'mincall',
         'sacall',
         'urnano',
+        'halcyon',
     ], help='Model')
     parser.add_argument("--window-size", type=int, choices=[400, 2000, 4000], help='Window size for the data')
     parser.add_argument("--task", type=str, choices=['human', 'global', 'inter'])
@@ -72,23 +73,6 @@ if __name__ == '__main__':
     checkpoint_every = 20000
 
     data_dir = args.data_dir
-    encoding_dict = {'A': 1 , 'C':  2 , 'G':  3 , 'T':  4 , '':  0}
-    decoding_dict = { 1 :'A',  2 : 'C',  3 : 'G',  4 : 'T', 0 : ''}
-
-    dataset = BaseNanoporeDataset(
-        data_dir = data_dir, 
-        decoding_dict = NON_RECURRENT_DECODING_DICT, 
-        encoding_dict = NON_RECURRENT_ENCODING_DICT, 
-        split = 0.95, 
-        shuffle = True, 
-        seed = 1
-    )
-
-    dataloader_train = DataLoader(dataset, batch_size = args.batch_size, 
-                                sampler = dataset.train_sampler, num_workers = 1)
-    dataloader_validation = DataLoader(dataset, batch_size = args.batch_size, 
-                                    sampler = dataset.validation_sampler, num_workers = 1)
-    
 
     if args.use_scaler:
         use_amp = True
@@ -97,20 +81,53 @@ if __name__ == '__main__':
         use_amp = False
         scaler = None
 
-    if args.model == 'bonito':
-        from bonito.model import BonitoModel as Model# pyright: reportMissingImports=false
-    elif args.model == 'catcaller':
-        from catcaller.model import CATCallerModel as Model# pyright: reportMissingImports=false
-    elif args.model == 'causalcall':
-        from causalcall.model import CausalCallModel as Model # pyright: reportMissingImports=false
-    elif args.model == 'mincall':
-        from mincall.model import MinCallModel as Model # pyright: reportMissingImports=false
-    elif args.model == 'sacall':
-        from sacall.model import SACallModel as Model # pyright: reportMissingImports=false
-    elif args.model == 'urnano':
-        from urnano.model import URNanoModel as Model # pyright: reportMissingImports=false
+    if args.model == 'halcyon':
+        from halcyon.model import HalcyonModelS2S as Model # pyright: reportMissingImports=false
+        decoding_dict = RECURRENT_DECODING_DICT
+        encoding_dict = RECURRENT_ENCODING_DICT
+        s2s = True
+    else:
+        decoding_dict = NON_RECURRENT_DECODING_DICT
+        encoding_dict = NON_RECURRENT_ENCODING_DICT
+        s2s = False
+        if args.model == 'bonito':
+            from bonito.model import BonitoModel as Model# pyright: reportMissingImports=false
+        elif args.model == 'catcaller':
+            from catcaller.model import CATCallerModel as Model# pyright: reportMissingImports=false
+        elif args.model == 'causalcall':
+            from causalcall.model import CausalCallModel as Model # pyright: reportMissingImports=false
+        elif args.model == 'mincall':
+            from mincall.model import MinCallModel as Model # pyright: reportMissingImports=false
+        elif args.model == 'sacall':
+            from sacall.model import SACallModel as Model # pyright: reportMissingImports=false
+        elif args.model == 'urnano':
+            from urnano.model import URNanoModel as Model # pyright: reportMissingImports=false
+        
+    print('Creating dataset')
+    dataset = BaseNanoporeDataset(
+        data_dir = data_dir, 
+        decoding_dict = decoding_dict, 
+        encoding_dict = encoding_dict, 
+        split = 0.95, 
+        shuffle = True, 
+        seed = 1,
+        s2s = s2s,
+    )
 
+    dataloader_train = DataLoader(
+        dataset, 
+        batch_size = args.batch_size, 
+        sampler = dataset.train_sampler, 
+        num_workers = 1
+    )
+    dataloader_validation = DataLoader(
+        dataset, 
+        batch_size = args.batch_size, 
+        sampler = dataset.validation_sampler, 
+        num_workers = 1
+    )
 
+    print('Creating model')
     model = Model(
         load_default = True,
         device = device,
@@ -121,6 +138,7 @@ if __name__ == '__main__':
     )
     model = model.to(device)
 
+    print('Creating optimization')
     ##    OPTIMIZATION     #############################################
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     total_steps =  (len(dataset.train_idxs)*num_epochs)/args.batch_size
@@ -137,6 +155,7 @@ if __name__ == '__main__':
     model.clipping_value = clipping_value
     model.use_sam = False
 
+    print('Creating outputs')
     # output stuff
     output_dir = os.path.join(args.output_dir, args.task)
     output_dir += '/'
@@ -166,9 +185,10 @@ if __name__ == '__main__':
     # keep track of losses and metrics to take the average
     train_results = dict()
     
+    print('Training')
     total_num_steps = 1
     for epoch_num in range(num_epochs):
-
+        
         loader_train = model.dataloader_train
         loader_validation = model.dataloader_validation
         # use this to restart the in case we finish all the validation data
