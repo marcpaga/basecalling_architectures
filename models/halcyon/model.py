@@ -13,9 +13,10 @@ from torch import nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
 from classes import BaseModelImpl, BaseModelS2S
-from layers.halcyon import HalcyonCNNBlock, HalcyonInceptionBlock
-from layers.layers import DecoderS2S
+from layers.halcyon import HalcyonCNNBlock, HalcyonInceptionBlock, HalcyonLSTM
+from layers.layers import RNNDecoderS2S
 from layers.attention import LuongAttention
+from constants import S2S_OUTPUT_CLASSES
 
 
 class HalcyonModel(BaseModelImpl):
@@ -147,7 +148,7 @@ class HalcyonModelS2S(BaseModelS2S):
         self.decoder = decoder
         
         if load_default:
-            self.load_default_configuration(load_default)
+            self.load_default_configuration()
 
     def build_cnn(self, mod):
 
@@ -176,27 +177,27 @@ class HalcyonModelS2S(BaseModelS2S):
         return cnn    
 
     def build_encoder(self):
-        encoder = nn.LSTM(
-                input_size = 243, 
-                hidden_size = 128, 
-                num_layers = 5, 
-                bidirectional = True
-            )
+        encoder = HalcyonLSTM(
+            input_size = 243, 
+            hidden_size = 128, 
+            num_layers = 5, 
+            bidirectional = True,
+            proj_size = 96,
+        )
         return encoder
 
     def build_decoder(self):
-        embedding = nn.Embedding(7, 16)
-        rnn = nn.LSTM(96, 96, num_layers = 5, bidirectional = False)
-        attention = LuongAttention('dot', 96)
-        out_linear = nn.Linear(96, 7)
+        embedding = nn.Embedding(S2S_OUTPUT_CLASSES, 16)
+        rnn = nn.LSTM(16, 96, num_layers = 5, bidirectional = False)
+        attention = LuongAttention('dot', 96, monotonic= True, monotonic_mode = 'parallel')
+        out_linear = nn.Linear(128, S2S_OUTPUT_CLASSES)
 
-        decoder = DecoderS2S(
+        decoder = RNNDecoderS2S(
             embedding = embedding, 
             rnn = rnn, 
             attention = attention, 
             out_linear = out_linear, 
-            encoder_hidden = 256, 
-            upstream_attention = True
+            attention_pos = 'downstream'
         )
         return decoder
 
@@ -206,11 +207,11 @@ class HalcyonModelS2S(BaseModelS2S):
             'cnn_output_activation': 'relu',
             'encoder_input_size': 243,
             'encoder_output_size': 256,
-            'decoder_input_size': 256,
+            'decoder_input_size': 128,
         }
         return defaults
 
-    def load_default_configuration(self, default_all = False):
+    def load_default_configuration(self):
         """Sets the default configuration for one or more
         modules of the network
 
@@ -218,11 +219,6 @@ class HalcyonModelS2S(BaseModelS2S):
 
         """
 
-        if self.convolution is None or default_all:
-            self.convolution = self.build_cnn(mod = False)
-
-        if self.encoder is None or default_all:
-            self.encoder = self.build_encoder()
-            
-        if self.decoder is None or default_all:
-            self.decoder = self.build_decoder()
+        self.convolution = self.build_cnn(mod = False)
+        self.encoder = self.build_encoder()    
+        self.decoder = self.build_decoder()
