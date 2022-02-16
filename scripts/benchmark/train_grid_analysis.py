@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from classes import BaseNanoporeDataset
 from gridmodel import GridAnalysisModel # pyright: reportMissingImports=false
 from schedulers import GradualWarmupScheduler
+from constants import NON_RECURRENT_ENCODING_DICT, NON_RECURRENT_DECODING_DICT
 
 import torch
 from torch.utils.data import DataLoader
@@ -86,15 +87,14 @@ if __name__ == '__main__':
     checkpoint_every = 20000
 
     data_dir = args.data_dir
-    encoding_dict = {'A': 1 , 'C':  2 , 'G':  3 , 'T':  4 , '':  0}
-    decoding_dict = { 1 :'A',  2 : 'C',  3 : 'G',  4 : 'T', 0 : ''}
-
-    dataset = BaseNanoporeDataset(data_dir = data_dir, 
-                                decoding_dict = decoding_dict, 
-                                encoding_dict = encoding_dict, 
-                                split = 0.95, 
-                                shuffle = True, 
-                                seed = 1)
+    dataset = BaseNanoporeDataset(
+        data_dir = data_dir, 
+        decoding_dict = NON_RECURRENT_DECODING_DICT, 
+        encoding_dict = NON_RECURRENT_ENCODING_DICT, 
+        split = 0.95, 
+        shuffle = True, 
+        seed = 1
+    )
 
     dataloader_train = DataLoader(dataset, batch_size = args.batch_size, 
                                 sampler = dataset.train_sampler, num_workers = 1)
