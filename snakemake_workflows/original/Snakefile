@@ -78,10 +78,8 @@ rule evaluate:
     shell:
         ' set +eu '
         ' && PS1=dummy ' 
-        ' && . $(conda info --base)/etc/profile.d/conda.sh '
-        ' && conda activate babe '
-        ' && echo $CONDA_PREFIX; ' 
-        ' python /hpc/compgen/users/mpages/babe/scripts/benchmark/evaluate_basecalls.py '\
+        ' && source /hpc/compgen/users/mpages/nanopore_benchmark/venv3/bin/activate; '
+        ' python3 /hpc/compgen/users/mpages/nanopore_benchmark/evaluate.py '\
         ' --output-file {output.evaluation_file} '\
         ' --basecalls-path {input.basecalls_path} '\
         ' --references-path {params.references_path} '\
