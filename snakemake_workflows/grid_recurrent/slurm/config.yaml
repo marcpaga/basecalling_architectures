@@ -1,0 +1,12 @@
+cluster: >-
+  sbatch 
+  --time={resources.time} 
+  --mem={resources.mem_mb}
+  -c {resources.cpus}
+  --partition {resources.partition}
+  --gpus-per-node={resources.gpus}
+  --mail-type=ALL 
+  --mail-user=m.pagesgallego@umcutrecht.nl
+  --job-name={resources.job_name}
+
+jobs: 16
