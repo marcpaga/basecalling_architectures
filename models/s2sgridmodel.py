@@ -3,6 +3,7 @@ from seq2seq.model import Seq2Seq
 class S2SGridAnalysisModel(Seq2Seq):
 
     def __init__(self, 
+        cnn_type,
         encoder_type,
         decoder_type,
         attention_type, 
@@ -11,7 +12,7 @@ class S2SGridAnalysisModel(Seq2Seq):
         *args, **kwargs):
         super(S2SGridAnalysisModel, self).__init__(*args, **kwargs)
 
-
+        self.cnn_type = cnn_type
         self.encoder_type = encoder_type
         self.decoder_type = decoder_type
         self.attention_type = attention_type
@@ -32,7 +33,7 @@ class S2SGridAnalysisModel(Seq2Seq):
         else:
             raise ValueError('decoder_type has to be "shallow" or "deep", given: ' + str(decoder_type))
 
-        self.convolution = Seq2Seq.build_cnn(self)
+        self.convolution = Seq2Seq.build_cnn(self, cnn_type = cnn_type)
         self.encoder = Seq2Seq.build_encoder(
             self,
             input_size = 384, 

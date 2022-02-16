@@ -77,7 +77,8 @@ if __name__ == '__main__':
         encoding_dict = RECURRENT_ENCODING_DICT, 
         split = 0.95, 
         shuffle = True, 
-        seed = 1
+        seed = 1,
+        s2s = True
     )
 
     dataloader_train = DataLoader(dataset, batch_size = args.batch_size, 
@@ -98,8 +99,12 @@ if __name__ == '__main__':
         attention_type = None
         attention_pos = None
         monotonic = False
+    else:
+        attention_pos = args.attention_pos
+        monotonic = args.monotonic
 
     model = S2SGridAnalysisModel(
+        cnn_type = args.cnn_type,
         encoder_type = args.encoder_type,
         decoder_type = args.decoder_type,
         attention_type = attention_type, 
@@ -132,7 +137,7 @@ if __name__ == '__main__':
     # output stuff
     output_dir = os.path.join(args.output_dir, args.task)
     output_dir += '/'
-    config = [args.cnn_type, args.encoder_type, args.decoder_type, attention_type, attention_pos, monotonic,  args.window_size]
+    config = [args.cnn_type, args.encoder_type, args.decoder_type, args.attention_type, args.attention_pos, args.monotonic, args.window_size]
     for i, c in enumerate(config):
         if i > 0:
             output_dir += '_'
