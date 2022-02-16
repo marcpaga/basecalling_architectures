@@ -43,6 +43,7 @@ class BaseModel(nn.Module):
         self.criterions = criterions
         self.clipping_value = clipping_value
         self.scaler = scaler
+        self.use_sam = use_sam
         if self.scaler is not None:
             self.use_amp = True
         else:
