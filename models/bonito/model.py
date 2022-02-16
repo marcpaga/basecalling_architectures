@@ -103,16 +103,13 @@ class BonitoModel(BaseModelImpl):
         }
         return defaults
         
-    def load_default_configuration(self, default_all = False):
+    def load_default_configuration(self):
         """Sets the default configuration for one or more
         modules of the network
         """
-        
-        if self.convolution is None or default_all:
-            self.convolution = self.build_cnn()
-            self.cnn_stride = self.get_defaults()['cnn_stride']
-        if self.encoder is None or default_all:
-            self.encoder = self.build_encoder(input_size = 384, reverse = True)
-        if self.decoder is None or default_all:
-            self.decoder = self.build_decoder(encoder_output_size = 384, decoder_type = 'crf')
-            self.decoder_type = 'crf'
+
+        self.convolution = self.build_cnn()
+        self.cnn_stride = self.get_defaults()['cnn_stride']
+        self.encoder = self.build_encoder(input_size = 384, reverse = True)
+        self.decoder = self.build_decoder(encoder_output_size = 384, decoder_type = 'crf')
+        self.decoder_type = 'crf'
