@@ -33,9 +33,9 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
-class DecoderS2S(nn.Module):
+class RNNDecoderS2S(nn.Module):
 
-    def __init__(self, embedding, rnn, attention, out_linear, encoder_hidden, upstream_attention = True):
+    def __init__(self, embedding, rnn, out_linear, attention = None, encoder_hidden = None, upstream_attention = True):
         """Seq2Seq decoder
 
         The rnn should have as many hidden dimensions as the output dimensions of
@@ -49,15 +49,19 @@ class DecoderS2S(nn.Module):
             decoder and the encoder outputs. Then the output of the decoder
             is concatenated with the attention and fed to the output linear layer.
 
+        No attention: the embedded input is directly fed into the decoder RNN
+            and the same for the hidden state tensor.
+
         Args:
             embedding (nn.Module): embedding module for the input of the previous token
             rnn (nn.Module): RNN decoder layer
             attention (nn.Module): attention module
             out_linear (nn.Module): linear layer that has output classes as output channels
-            encoder_hidden (int): number of hidden dimensions of the encoder, consider hidden*2 if bidirectional
+            encoder_hidden (int): number of hidden dimensions of the encoder, consider hidden*2 if bidirectional. If
+                None it will be taken from the first forward through the network
             upstream_attention (bool): whether the attention is applied before the decoder rnn
         """
-        super(DecoderS2S, self).__init__()
+        super(RNNDecoderS2S, self).__init__()
 
         self.embedding = embedding
         self.rnn = rnn
@@ -67,7 +71,10 @@ class DecoderS2S(nn.Module):
         self.upstream_attention = upstream_attention
 
         if self.upstream_attention:
-            self.concat = nn.Linear(self.embedding.embedding_dim + self.encoder_hidden, self.rnn.input_size)
+            if self.encoder_hidden is None:
+                self.concat = None
+            else:
+                self.concat = nn.Linear(self.embedding.embedding_dim + self.encoder_hidden, self.rnn.input_size)
         else:
             self.concat = nn.Linear(self.rnn.hidden_size * 2, self.out_linear.in_features)
 
@@ -99,13 +106,36 @@ class DecoderS2S(nn.Module):
                 hidden = (torch.cat([hidden[0], torch.zeros((self.rnn.num_layers - 1, hidden[0].shape[1], hidden[0].shape[2]), device = encoder_outputs.device)], dim = 0), 
                           torch.cat([hidden[1], torch.zeros((self.rnn.num_layers - 1, hidden[1].shape[1], hidden[1].shape[2]), device = encoder_outputs.device)], dim = 0))
 
-        if self.upstream_attention:
-            return self.forward_upstream(inputs, hidden, encoder_outputs, last_attention)
+        if self.attention is None:
+            return self.forward_no_attention(inputs, hidden)
         else:
-            return self.forward_downstream(inputs, hidden, encoder_outputs, last_attention)
+            if self.upstream_attention:
+                return self.forward_upstream(inputs, hidden, encoder_outputs, last_attention)
+            else:
+                return self.forward_downstream(inputs, hidden, encoder_outputs, last_attention)
+
+    def forward_no_attention(self, inputs, hidden):
+        """Forward without attention
+        
+        See `forward` for args
+        """
+
+        embedded = self.embedding(inputs)
+        embedded = embedded.unsqueeze(2).permute(2, 0, 1) # [len, batch, hidden]
+
+        if len(hidden) > 1:
+            rnn_output, hidden = self.rnn(embedded, hidden)
+        else:
+            rnn_output, hidden = self.rnn(embedded, hidden[0])
+
+        output = F.log_softmax(self.out_linear(rnn_output), dim = -1)
+
+        return output, hidden, None
 
     def forward_upstream(self, inputs, hidden, encoder_outputs, last_attention):
-        """See `forward` for args
+        """Forward with upstream attention
+        
+        See `forward` for args
         """
         
         embedded = self.embedding(inputs)
@@ -120,6 +150,9 @@ class DecoderS2S(nn.Module):
 
         context = torch.bmm(encoder_outputs, attn_weights)
         concat_input = torch.cat((embedded, context), dim = 1).squeeze(2)
+        if self.concat is None:
+            self.encoder_hidden = hidden.shape[-1]
+            self.concat = nn.Linear(self.embedding.embedding_dim + self.encoder_hidden, self.rnn.input_size)
         rnn_input = torch.tanh(self.concat(concat_input))
 
         rnn_input = rnn_input.unsqueeze(0) # [len, batch, hidden]
@@ -134,7 +167,9 @@ class DecoderS2S(nn.Module):
         return output, hidden, attn_weights.squeeze(2).permute(1, 0)
 
     def forward_downstream(self, inputs, hidden, encoder_outputs, last_attention):
-        """See `forward` for args
+        """Forward with downstream attention
+        
+        See `forward` for args
         """
         
         embedded = self.embedding(inputs)
