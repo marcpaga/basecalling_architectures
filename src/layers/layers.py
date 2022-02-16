@@ -35,7 +35,7 @@ class PositionalEncoding(nn.Module):
 
 class RNNDecoderS2S(nn.Module):
 
-    def __init__(self, embedding, rnn, out_linear, attention = None, encoder_hidden = None, upstream_attention = True):
+    def __init__(self, embedding, rnn, out_linear, attention = None, attention_pos = 'upstream'):
         """Seq2Seq decoder
 
         The rnn should have as many hidden dimensions as the output dimensions of
@@ -59,7 +59,7 @@ class RNNDecoderS2S(nn.Module):
             out_linear (nn.Module): linear layer that has output classes as output channels
             encoder_hidden (int): number of hidden dimensions of the encoder, consider hidden*2 if bidirectional. If
                 None it will be taken from the first forward through the network
-            upstream_attention (bool): whether the attention is applied before the decoder rnn
+            attention_pos (str): "upstream" for attention before the decoder, or "downstream" for attention after decoder
         """
         super(RNNDecoderS2S, self).__init__()
 
@@ -67,17 +67,14 @@ class RNNDecoderS2S(nn.Module):
         self.rnn = rnn
         self.attention = attention
         self.out_linear = out_linear
-        self.encoder_hidden = encoder_hidden
-        self.upstream_attention = upstream_attention
+        self.attention_pos = attention_pos
 
-        if self.upstream_attention:
-            if self.encoder_hidden is None:
-                self.concat = None
-            else:
-                self.concat = nn.Linear(self.embedding.embedding_dim + self.encoder_hidden, self.rnn.input_size)
-        else:
+        if self.attention_pos == 'upstream':
+            self.concat = nn.LazyLinear(self.rnn.input_size)
+        elif self.attention_pos == 'downstream':
             self.concat = nn.Linear(self.rnn.hidden_size * 2, self.out_linear.in_features)
-
+        else:
+            raise ValueError('attention pos has to be "upstream" or "downstream", given: ' + str(self.attention_pos))
         if self.rnn.bidirectional:
             raise AttributeError('RNN cannot be bidirectional')
         
@@ -109,9 +106,9 @@ class RNNDecoderS2S(nn.Module):
         if self.attention is None:
             return self.forward_no_attention(inputs, hidden)
         else:
-            if self.upstream_attention:
+            if self.attention_pos == 'upstream':
                 return self.forward_upstream(inputs, hidden, encoder_outputs, last_attention)
-            else:
+            elif self.attention_pos == 'downstream':
                 return self.forward_downstream(inputs, hidden, encoder_outputs, last_attention)
 
     def forward_no_attention(self, inputs, hidden):
@@ -150,9 +147,6 @@ class RNNDecoderS2S(nn.Module):
 
         context = torch.bmm(encoder_outputs, attn_weights)
         concat_input = torch.cat((embedded, context), dim = 1).squeeze(2)
-        if self.concat is None:
-            self.encoder_hidden = hidden.shape[-1]
-            self.concat = nn.Linear(self.embedding.embedding_dim + self.encoder_hidden, self.rnn.input_size)
         rnn_input = torch.tanh(self.concat(concat_input))
 
         rnn_input = rnn_input.unsqueeze(0) # [len, batch, hidden]
