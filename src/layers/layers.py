@@ -69,12 +69,14 @@ class RNNDecoderS2S(nn.Module):
         self.out_linear = out_linear
         self.attention_pos = attention_pos
 
-        if self.attention_pos == 'upstream':
-            self.concat = nn.LazyLinear(self.rnn.input_size)
-        elif self.attention_pos == 'downstream':
-            self.concat = nn.Linear(self.rnn.hidden_size * 2, self.out_linear.in_features)
-        else:
-            raise ValueError('attention pos has to be "upstream" or "downstream", given: ' + str(self.attention_pos))
+        if self.attention is not None:
+            if self.attention_pos == 'upstream':
+                self.concat = nn.LazyLinear(self.rnn.input_size)
+            elif self.attention_pos == 'downstream':
+                self.concat = nn.Linear(self.rnn.hidden_size * 2, self.out_linear.in_features)
+            else:
+                raise ValueError('attention pos has to be "upstream" or "downstream", given: ' + str(self.attention_pos))
+                
         if self.rnn.bidirectional:
             raise AttributeError('RNN cannot be bidirectional')
         
