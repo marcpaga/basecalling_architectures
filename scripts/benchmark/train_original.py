@@ -86,10 +86,12 @@ if __name__ == '__main__':
         decoding_dict = RECURRENT_DECODING_DICT
         encoding_dict = RECURRENT_ENCODING_DICT
         s2s = True
+        warmup_steps = 1
     else:
         decoding_dict = NON_RECURRENT_DECODING_DICT
         encoding_dict = NON_RECURRENT_ENCODING_DICT
         s2s = False
+        warmup_steps = 5000
         if args.model == 'bonito':
             from bonito.model import BonitoModel as Model# pyright: reportMissingImports=false
         elif args.model == 'catcaller':
@@ -143,7 +145,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     total_steps =  (len(dataset.train_idxs)*num_epochs)/args.batch_size
     cosine_lr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,total_steps, eta_min=0.00001, last_epoch=-1, verbose=False)
-    lr_scheduler = GradualWarmupScheduler(optimizer, multiplier = 1.0, total_epoch = 5000, after_scheduler=cosine_lr)
+    lr_scheduler = GradualWarmupScheduler(optimizer, multiplier = 1.0, total_epoch = warmup_steps, after_scheduler=cosine_lr)
     schedulers = {'lr_scheduler': lr_scheduler}
     clipping_value = 2
     use_sam = False
