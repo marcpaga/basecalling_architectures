@@ -62,6 +62,7 @@ if __name__ == '__main__':
     parser.add_argument("--window-size", type=int, choices=[400, 2000, 4000], help='Window size for the data')
     parser.add_argument("--task", type=str, choices=['human', 'global', 'inter'])
     parser.add_argument("--batch-size", type=int, default = 64)
+    parser.add_argument("--scheduled-sampling", type=float, default = 0.75)
     parser.add_argument("--use-scaler", action='store_true', help='use 16bit float precision')
     parser.add_argument("--overwrite", action='store_true', help='delete existing files in folder')
     args = parser.parse_args()
@@ -114,7 +115,8 @@ if __name__ == '__main__':
         dataloader_train = dataloader_train,
         dataloader_validation = dataloader_validation,
         use_amp = use_amp,
-        scaler = scaler
+        scaler = scaler,
+        scheduled_sampling = args.scheduled_sampling,
     )
     model = model.to(device)
 
@@ -122,7 +124,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     total_steps =  (len(dataset.train_idxs)*num_epochs)/args.batch_size
     cosine_lr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,total_steps, eta_min=0.00001, last_epoch=-1, verbose=False)
-    lr_scheduler = GradualWarmupScheduler(optimizer, multiplier = 1.0, total_epoch = 5000, after_scheduler=cosine_lr)
+    lr_scheduler = GradualWarmupScheduler(optimizer, multiplier = 1.0, total_epoch = 1, after_scheduler=cosine_lr)
     schedulers = {'lr_scheduler': lr_scheduler}
     clipping_value = 2
     use_sam = False
