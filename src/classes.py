@@ -568,6 +568,7 @@ class BaseModelS2S(BaseModel):
         encoder = None, 
         decoder = None, 
         scheduled_sampling = 0, 
+        max_len = None,
         token_sos = S2S_SOS,
         token_eos = S2S_EOS,
         token_pad = S2S_PAD,
@@ -603,8 +604,10 @@ class BaseModelS2S(BaseModel):
 
         self.criterions['ce'] = nn.NLLLoss()
         self.scheduled_sampling = scheduled_sampling
+        self.max_len = max_len
+        self.decoder_type = 'seq2seq'
 
-    def forward(self, x, y = None, forced_teaching = 0):
+    def forward(self, x, y = None, forced_teaching = 0, max_len = None):
         """Forward through the network
 
         Args:
@@ -620,6 +623,8 @@ class BaseModelS2S(BaseModel):
         if forced_teaching > 0 and y is None:
             raise ValueError('y must be given if forced_teaching > 0')
 
+        if max_len is None:
+            max_len = x.shape[-1]
         x = self.convolution(x)
         x = x.permute(2, 0, 1)
         enc_out, hidden = self.encoder(x) 
@@ -635,7 +640,7 @@ class BaseModelS2S(BaseModel):
         encoder_timesteps = enc_out.shape[0]
 
         ## [len, batch, classes]
-        outputs = torch.zeros(encoder_timesteps, enc_out.shape[1], self.out_classes).to(self.device)
+        outputs = torch.zeros(max_len, enc_out.shape[1], self.out_classes).to(self.device)
         outputs[1:, :, self.token_pad] = 1 # fill with padding predictions
         outputs[0, :, self.token_sos] = 1 # first token is always SOS
 
@@ -646,7 +651,7 @@ class BaseModelS2S(BaseModel):
         last_attention = torch.zeros((encoder_timesteps, enc_out.shape[1]), device = self.device)
         last_attention[0, :] = 1
 
-        for t in range(1, encoder_timesteps):
+        for t in range(1, max_len):
 
             dec_out, hidden, last_attention = self.decoder(dec_in, hidden, enc_out, last_attention)
             outputs[t, :, :] = dec_out
@@ -678,7 +683,11 @@ class BaseModelS2S(BaseModel):
         x = x.unsqueeze(1) # add channels dimension
         y = batch['y'].to(self.device)
         y = y.to(int)
-        p = self.forward(x, y, self.scheduled_sampling) # forward through the network
+
+        # during training shorten max_len based on training to speed up training
+        max_len = int(torch.max(torch.sum(y != 0, axis = 1)) + 10)
+
+        p = self.forward(x, y, forced_teaching = self.scheduled_sampling, max_len = max_len) # forward through the network
         
         loss, losses = self.calculate_loss(y, p.permute(1, 2, 0))
         self.optimize(loss)
@@ -697,7 +706,7 @@ class BaseModelS2S(BaseModel):
             x = x.unsqueeze(1) # add channels dimension
             y = batch['y'].to(self.device)
             y = y.to(int)
-            p = self.forward(x, None, 0.0) # forward through the network
+            p = self.forward(x, None, forced_teaching = 0.0, max_len = self.max_len) # forward through the network
             
             _, losses = self.calculate_loss(y, p.permute(1, 2, 0))
             
@@ -712,7 +721,7 @@ class BaseModelS2S(BaseModel):
         with torch.no_grad():
             x = batch['x'].to(self.device)
             x = x.unsqueeze(1)
-            p = self.forward(x, None, 0.0)
+            p = self.forward(x, None, forced_teaching = 0.0, max_len = self.max_len)
             
         return p
 
@@ -729,7 +738,7 @@ class BaseModelS2S(BaseModel):
 
         return loss, losses
      
-    def decode(self, p, greedy = False):
+    def decode(self, p, decoding_dict = None, greedy = False):
         """Decode the predictions into sequences
 
         Args:
@@ -740,12 +749,18 @@ class BaseModelS2S(BaseModel):
             A `list` with the decoded sequences as strings.
         """
 
-        if greedy:
-            return self.decode_greedy(p)
-        else:
-            return self.decode_beamsearch(p)
+        if decoding_dict is None:
+            try:
+                decoding_dict = self.dataloader_train.dataset.decoding_dict
+            except:
+                raise ValueError('Missing decoding_dict')
 
-    def decode_greedy(self, p):
+        if greedy:
+            return self.decode_greedy(p, decoding_dict)
+        else:
+            return self.decode_beamsearch(p, decoding_dict)
+
+    def decode_greedy(self, p, decoding_dict):
         
         p = p.detach()
         p = p.permute(1, 0, 2) # [batch, len, channels]
@@ -758,7 +773,7 @@ class BaseModelS2S(BaseModel):
             p[p == str(k)] = ''
         
         # replace predictions with bases
-        for k, v in self.dataloader_train.dataset.decoding_dict.items():
+        for k, v in decoding_dict.items():
             p[p == str(k)] = v
 
         # join everything
