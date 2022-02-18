@@ -6,10 +6,15 @@ import sys
 from torch import nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../models')))
+
 from classes import BaseModelS2S
 from layers.layers import RNNDecoderS2S
 from layers.attention import LuongAttention
 from constants import S2S_OUTPUT_CLASSES
+
+from bonito.model import BonitoModel
+from halcyon.model import HalcyonModelS2S
 
 class Seq2Seq(BaseModelS2S):
     """Halcyon Model
@@ -34,39 +39,23 @@ class Seq2Seq(BaseModelS2S):
     def build_cnn(self, cnn_type):
         
         if cnn_type == 'bonito':
-            cnn = nn.Sequential(
-                nn.Conv1d(
-                    in_channels = 1, 
-                    out_channels = 4, 
-                    kernel_size = 5, 
-                    stride= 1, 
-                    padding=5//2, 
-                    bias=True),
-                nn.SiLU(),
-                nn.Conv1d(
-                    in_channels = 4, 
-                    out_channels = 16, 
-                    kernel_size = 5, 
-                    stride= 1, 
-                    padding=5//2, 
-                    bias=True),
-                nn.SiLU(),
-                nn.Conv1d(
-                    in_channels = 16, 
-                    out_channels = 384, 
-                    kernel_size = 19, 
-                    stride= 5, 
-                    padding=19//2, 
-                    bias=True),
-                nn.SiLU()
-            )
+            cnn = BonitoModel.build_cnn(self)
+            self.cnn_output_size = BonitoModel.get_defaults(self)['cnn_output_size']
+        elif cnn_type == 'halcyon':
+            cnn = HalcyonModelS2S.build_cnn(self, mod=False)
+            self.cnn_output_size = HalcyonModelS2S.get_defaults(self)['cnn_output_size']
         else:
             raise ValueError('invalid cnn_type: '+ str(cnn_type))
         return cnn
 
     def build_encoder(self, input_size, output_size, num_layers, bidirectional):
 
-        encoder = nn.LSTM(input_size, output_size, num_layers = num_layers, bidirectional = bidirectional)
+        encoder = nn.LSTM(
+            input_size, 
+            output_size, 
+            num_layers = num_layers, 
+            bidirectional = bidirectional
+        )
         return encoder
 
     def build_decoder(self, embedding_dim, rnn_size, rnn_num_layers, attention_type, attention_pos, monotonic):
@@ -84,7 +73,7 @@ class Seq2Seq(BaseModelS2S):
             rnn = nn.LSTM(embedding_dim, rnn_size, num_layers = rnn_num_layers, bidirectional = False)
 
         
-        out_linear = nn.Linear(rnn_size, S2S_OUTPUT_CLASSES)
+        out_linear = nn.LazyLinear(rnn_size, S2S_OUTPUT_CLASSES)
 
         decoder = RNNDecoderS2S(
             embedding = embedding, 
