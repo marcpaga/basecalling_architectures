@@ -16,8 +16,10 @@ from read import read_fast5
 from normalization import normalize_signal_from_read_data, med_mad
 from constants import CTC_BLANK, BASES_CRF, S2S_PAD, S2S_EOS, S2S_SOS, S2S_OUTPUT_CLASSES
 from constants import CRF_STATE_LEN, CRF_BIAS, CRF_SCALE, CRF_BLANK_SCORE, CRF_N_BASE, BASES
+from constants import STICH_ALIGN_FUNCTION, STICH_GAP_OPEN_PENALTY, STICH_GAP_EXTEND_PENALTY, RECURRENT_DECODING_DICT, MATRIX
 
-from evaluation import alignment_accuracy
+from evaluation import alignment_accuracy, make_align_arr, elongate_cigar
+
 from layers.bonito import CTC_CRF, BonitoLinearCRFDecoder
 
 class BaseModel(nn.Module):
@@ -629,8 +631,9 @@ class BaseModelS2S(BaseModel):
         x = x.permute(2, 0, 1)
         enc_out, hidden = self.encoder(x) 
 
+        if hidden[0] is not None:
         # get the relevant hidden states
-        hidden = self._concat_hiddens(hidden)
+            hidden = self._concat_hiddens(hidden)
 
         if not isinstance(hidden, tuple):
             hidden = (hidden)
@@ -1248,7 +1251,7 @@ class BaseBasecaller():
         self.beam_size = beam_size
         self.beam_threshold = beam_threshold
 
-    def stich(self, chunks, method, *args, **kwargs):
+    def stich(self, method, *args, **kwargs):
         """
         Stitch chunks together with a given overlap
         
@@ -1257,7 +1260,9 @@ class BaseBasecaller():
         """
 
         if method == 'stride':
-            return self.stich_by_stride(chunks, *args, **kwargs)
+            return self.stich_by_stride(*args, **kwargs)
+        elif method == 'alignment':
+            return self.stich_by_alignment(*args, **kwargs)
         else:
             raise NotImplementedError()
 
@@ -1307,6 +1312,70 @@ class BaseBasecaller():
             return torch.cat([
                 chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
             ])
+
+    def stich_by_alignment(self, preds, qscores_list, chunk_size, chunk_overlap):
+        """Stich basecalled sequences via alignment
+
+        Works the same as stich_by_stride, but instead on overlaping the windows
+        based on the stride. We overlap the basecalled sequences based on 
+        alignment.
+
+        Args:
+            preds(list): list of predicted sequences as strings
+            qscores(list): list of phredq scores as chars
+            chunk_size (int): length of the raw data window
+            chunk_overlap (int): length of the overlap between windows
+        """
+        pre_st = 0
+        consensus = list()
+        phredq_consensus = list()
+        unmasked_fraction = round(chunk_overlap/chunk_size, 1)
+
+        for i in range(len(preds)-1):
+
+            que = preds[i+1]
+            ref = preds[i]
+            ref_phredq = qscores_list[i]
+            que_phredq = qscores_list[i+1]
+            right = len(ref) - int(len(ref)*unmasked_fraction)
+            left = int(len(ref)*unmasked_fraction)
+
+            cut_ref = ref[-left:]
+            cut_que = que[:int(len(que)*unmasked_fraction)]
+            cut_ref_phredq = ref_phredq[-left:]
+            cut_que_phredq = que_phredq[:int(len(que)*unmasked_fraction)]
+
+            alignment = STICH_ALIGN_FUNCTION(cut_que, cut_ref, open = STICH_GAP_OPEN_PENALTY, extend = STICH_GAP_EXTEND_PENALTY, matrix = MATRIX)
+
+            decoded_cigar = alignment.cigar.decode.decode()
+            long_cigar, _, _ = elongate_cigar(decoded_cigar)
+            align_arr = make_align_arr(long_cigar, cut_ref, cut_que, cut_que_phredq, cut_ref_phredq)
+            matches = np.where(align_arr[1] == '|')[0]
+            missmatches = np.where(align_arr[1] == '.')[0]
+
+            st = min(np.concatenate([matches, missmatches]))
+            nd = max(np.concatenate([matches, missmatches])) + 1
+            mid = int((nd - st) /2)
+            
+            mini1 = align_arr[0][:st + mid]
+            mini2 = align_arr[2][(st + mid):nd]
+            mini1 = "".join(mini1.tolist()).replace('-', '')
+            mini2 = "".join(mini2.tolist()).replace('-', '')
+
+            mini1_phredq = align_arr[4][:st + mid]
+            mini2_phredq = align_arr[3][(st + mid):nd]
+            mini1_phredq = "".join(mini1_phredq.tolist()).replace(' ', '')
+            mini2_phredq = "".join(mini2_phredq.tolist()).replace(' ', '')
+
+            pre_st = nd - st
+
+            consensus_seq = ref[pre_st:right]+mini1+mini2
+            consensus_phredq = ref_phredq[pre_st:right]+mini1_phredq+mini2_phredq
+            assert len(consensus_seq) == len(consensus_phredq)
+            consensus.append(consensus_seq)
+            phredq_consensus.append(consensus_phredq)
+
+        return "".join(consensus), "".join(phredq_consensus)
 
 class BasecallerCTC(BaseBasecaller):
     """A base Basecaller class that is used to basecall complete reads
@@ -1414,6 +1483,7 @@ class BasecallerCRF(BaseBasecaller):
     def __init__(self, *args, **kwargs):
         super(BasecallerCRF, self).__init__(*args, **kwargs)
 
+
     def basecall(self, verbose = True, qscale = 1.0, qbias = 1.0):
         # iterate over the data
 
@@ -1484,7 +1554,68 @@ class BasecallerCRF(BaseBasecaller):
                 f.flush()
 
             
-class BasecallerImpl(BasecallerCTC, BasecallerCRF):
+class BasecallerSeq2Seq(BaseBasecaller):
+
+    def __init__(self, *args, **kwargs):
+        super(BasecallerSeq2Seq, self).__init__(*args, **kwargs)
+
+        if self.beam_size > 1:
+            raise NotImplementedError('No beam search yet, only greedy')
+
+    def basecall(self, verbose = True, qscale = 1.0, qbias = 1.0):
+
+        for batch in tqdm(self.dataset, disable = not verbose):
+
+            ids = batch['id'].squeeze(0)
+            ids_arr = np.zeros((ids.shape[0], ), dtype = 'U36')
+            for i in range(ids.shape[0]):
+                ids_arr[i] = str(uuid.UUID(fields=ids[i].tolist()))
+
+            assert len(np.unique(ids_arr)) == 1
+            read_id = str(np.unique(ids_arr)[0])
+            
+            x = batch['x'].squeeze(0)
+            l = x.shape[0]
+            ss = torch.arange(0, l, self.batch_size)
+            nn = ss + self.batch_size
+
+            predictions = list()
+            for s, n in zip(ss, nn):
+                predictions.append(self.model.predict_step({'x':x[s:n, :]}))
+            all_predictions = torch.cat(predictions, dim = 1).cpu()
+            # calculate qscores as integers
+            qscores = (torch.round(-10*(torch.log10(1 - all_predictions.exp().max(-1).values)) * qscale + qbias) + 33).permute(1, 0).numpy().astype(int)
+
+            preds = self.model.decode(all_predictions, decoding_dict = RECURRENT_DECODING_DICT, greedy = True)
+
+            # translate qscores to ascii characters
+            qscores_list = list()
+            for p, qscore in zip(preds, qscores):
+                qscore_str = ""
+                for q in qscore:
+                    # padding qscores are negative
+                    if q < 0:
+                        continue
+                    qscore_str += chr(q).encode('ascii').decode("ascii") 
+                # cut qscores for predictions after stop token
+                qscores_list.append(qscore_str[:len(p)])
+
+            pred_seq, pred_phredq = self.stich_by_alignment(preds, qscores_list, self.chunksize, self.overlap)
+            assert len(pred_seq) == len(pred_phredq)
+            fastq_string = '@'+str(read_id)+'\n'
+            fastq_string += pred_seq + '\n'
+            fastq_string += '+\n'
+            fastq_string += pred_phredq + '\n'
+
+            with open(self.output_file, 'a') as f:
+                f.write(str(fastq_string))
+                f.flush()
+                
+
+
+
+
+class BasecallerImpl(BasecallerCTC, BasecallerCRF, BasecallerSeq2Seq):
 
     def __init__(self, *args, **kwargs):
         super(BasecallerImpl, self).__init__(*args, **kwargs)
@@ -1496,3 +1627,6 @@ class BasecallerImpl(BasecallerCTC, BasecallerCRF):
 
         if self.model.decoder_type == 'crf':
             return BasecallerCRF.basecall(self, verbose = verbose, *args, **kwargs)
+
+        if self.model.decoder_type == 'seq2seq':
+            return BasecallerSeq2Seq.basecall(self, verbose = verbose, *args, **kwargs)

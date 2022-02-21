@@ -95,6 +95,11 @@ GLOBAL_ALIGN_FUNCTION = parasail.nw_trace_striped_32
 LOCAL_ALIGN_FUNCTION = parasail.sw_trace_striped_32
 MATRIX = parasail.matrix_create("".join(BASES), ALIGNMENT_MATCH_SCORE, -ALIGNMENT_MISSMATCH_SCORE)
 
+# parasail stich alignment configuration
+STICH_ALIGN_FUNCTION = parasail.sg_trace_striped_32
+STICH_GAP_OPEN_PENALTY = 5
+STICH_GAP_EXTEND_PENALTY = 3
+
 # encoding/decoding dicts
 NON_RECURRENT_ENCODING_DICT = {'A':1, 'C':2, 'G':3, 'T':4, '':0}
 NON_RECURRENT_DECODING_DICT = {1:'A', 2:'C', 3:'G', 4:'T', 0:''}
