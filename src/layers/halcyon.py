@@ -99,6 +99,13 @@ class HalcyonInceptionBlock(nn.Module):
         return int((l*s - s + k - l)/2)
 
 class HalcyonLSTM(nn.Module):
+    """
+    Halcyon does not initiate the decoder state with the last hidden state from the encoder (?)
+    therefore we already initiate the states with zeros
+
+    https://github.com/relastle/halcyon/blob/ca523b23bdc0778aaea06ef5998f5bd6aa9bf8f8/halcyon/ml/net/decoder/inference_decoder.py#L131-L148
+    """
+
 
     def __init__(self, input_size, hidden_size, num_layers, bidirectional, proj_size):
         super(HalcyonLSTM, self).__init__()
@@ -114,5 +121,8 @@ class HalcyonLSTM(nn.Module):
         last_hidden = hidden[0][-1, :, :].unsqueeze(0)
         output = output[:, :, output.shape[2]//2:]
 
-        hidden = (last_hidden, torch.zeros(last_hidden.shape, device = last_hidden.device, requires_grad = True))
+        hidden = (
+            torch.zeros(last_hidden.shape, device = last_hidden.device, requires_grad = True), 
+            torch.zeros(last_hidden.shape, device = last_hidden.device, requires_grad = True)
+        )
         return output, hidden

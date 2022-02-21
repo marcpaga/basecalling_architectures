@@ -53,7 +53,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", type=str, help='Path where the data for the dataloaders is stored')
     parser.add_argument("--output-dir", type=str, help='Path where the model is saved')
-    parser.add_argument("--cnn-type", type=str, choices=['bonito'], help='Type of CNN')
+    parser.add_argument("--cnn-type", type=str, choices=['bonito', 'halcyon'], help='Type of CNN')
     parser.add_argument("--encoder-type", type=str, choices=['shallow', 'deep'], help='Type of encoder')
     parser.add_argument("--decoder-type", type=str, choices=['shallow', 'deep'], help='Type of decoder')
     parser.add_argument("--attention-type", type=str, choices=['None', 'general', 'dot', 'concat'])
@@ -82,12 +82,19 @@ if __name__ == '__main__':
         s2s = True
     )
 
-    dataloader_train = DataLoader(dataset, batch_size = args.batch_size, 
-                                sampler = dataset.train_sampler, num_workers = 1)
-    dataloader_validation = DataLoader(dataset, batch_size = args.batch_size, 
-                                    sampler = dataset.validation_sampler, num_workers = 1)
+    dataloader_train = DataLoader(
+        dataset, 
+        batch_size = args.batch_size, 
+        sampler = dataset.train_sampler, 
+        num_workers = 1
+    )
+    dataloader_validation = DataLoader(
+        dataset, 
+        batch_size = args.batch_size, 
+        sampler = dataset.validation_sampler, 
+        num_workers = 1
+    )
     
-
     if args.use_scaler:
         use_amp = True
         scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
