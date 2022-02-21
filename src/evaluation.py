@@ -83,7 +83,7 @@ def shorten_cigar(long_cigar):
 
     return short_cigar
 
-def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None):
+def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None, phredq_ref = None):
     """Makes an alignment array based on the long cigar
     
     Args:
@@ -91,10 +91,11 @@ def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None):
         truth_seq (str): sequence 1
         pred_seq (str): sequence 2
         phredq (str): quality scores for the predicted sequence
+        phredq_ref (str): quality scores for the reference
 
     Returns:
-        A np:array of shape [3 or 4, alignment_length]. The first dimensions are the
-        reference, alignment chars, predicted sequence and phredq if given.
+        A np:array of shape [5, alignment_length]. The first dimensions are the
+        reference, alignment chars, predicted sequence, phredq and phredq_ref if given.
     """
 
     if phredq is not None:
@@ -103,10 +104,7 @@ def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None):
     
     tc = 0
     pc = 0
-    if phredq is None:
-        align_arr = np.full((3, len(long_cigar)), '')
-    else:
-        align_arr = np.full((4, len(long_cigar)), '')
+    align_arr = np.full((5, len(long_cigar)), '')
     for i, c in enumerate(long_cigar):
         if c == 'D':
             align_arr[0, i] = truth_seq[tc]
@@ -114,6 +112,8 @@ def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None):
             align_arr[2, i] = '-'
             if phredq is not None:
                 align_arr[3, i] = ' '
+            if phredq_ref is not None:
+                align_arr[4, i] = phredq_ref[tc]
 
             tc += 1
         elif c == 'I':
@@ -122,6 +122,8 @@ def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None):
             align_arr[2, i] = pred_seq[pc]
             if phredq is not None:
                 align_arr[3, i] = phredq[pc]
+            if phredq_ref is not None:
+                align_arr[4, i] = ' '
 
             pc += 1
         elif c == 'X':
@@ -130,6 +132,8 @@ def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None):
             align_arr[2, i] = pred_seq[pc]
             if phredq is not None:
                 align_arr[3, i] = phredq[pc]
+            if phredq_ref is not None:
+                align_arr[4, i] = phredq_ref[tc]
 
             pc += 1
             tc += 1
@@ -139,6 +143,8 @@ def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None):
             align_arr[2, i] = pred_seq[pc]
             if phredq is not None:
                 align_arr[3, i] = phredq[pc]
+            if phredq_ref is not None:
+                align_arr[4, i] = phredq_ref[tc]
 
             pc += 1
             tc += 1
@@ -151,6 +157,8 @@ def make_align_arr(long_cigar, truth_seq, pred_seq, phredq = None):
                 align_arr[1, i] = '.'
             if phredq is not None:
                 align_arr[3, i] = phredq[pc]
+            if phredq_ref is not None:
+                align_arr[4, i] = phredq_ref[tc]
 
             pc += 1
             tc += 1
