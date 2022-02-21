@@ -73,7 +73,7 @@ class Seq2Seq(BaseModelS2S):
             rnn = nn.LSTM(embedding_dim, rnn_size, num_layers = rnn_num_layers, bidirectional = False)
 
         
-        out_linear = nn.LazyLinear(rnn_size, S2S_OUTPUT_CLASSES)
+        out_linear = nn.LazyLinear(S2S_OUTPUT_CLASSES)
 
         decoder = RNNDecoderS2S(
             embedding = embedding, 
