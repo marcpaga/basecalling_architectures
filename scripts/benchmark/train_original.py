@@ -156,7 +156,7 @@ if __name__ == '__main__':
     model.optimizer = optimizer
     model.schedulers = schedulers
     model.clipping_value = clipping_value
-    model.use_sam = False
+    model.use_sam = use_sam
 
     print('Creating outputs')
     # output stuff
