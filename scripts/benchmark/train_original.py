@@ -61,7 +61,7 @@ if __name__ == '__main__':
         'urnano',
         'halcyon',
     ], help='Model')
-    parser.add_argument("--window-size", type=int, choices=[400, 2000, 4000], help='Window size for the data')
+    parser.add_argument("--window-size", type=int, choices=[400, 1000, 2000, 4000], help='Window size for the data')
     parser.add_argument("--task", type=str, choices=['human', 'global', 'inter'])
     parser.add_argument("--batch-size", type=int, default = 64)
     parser.add_argument("--use-scaler", action='store_true', help='use 16bit float precision')
@@ -73,13 +73,6 @@ if __name__ == '__main__':
     checkpoint_every = 20000
 
     data_dir = args.data_dir
-
-    if args.use_scaler:
-        use_amp = True
-        scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
-    else:
-        use_amp = False
-        scaler = None
 
     if args.model == 'halcyon':
         from halcyon.model import HalcyonModelS2S as Model # pyright: reportMissingImports=false
@@ -128,6 +121,14 @@ if __name__ == '__main__':
         sampler = dataset.validation_sampler, 
         num_workers = 1
     )
+
+
+    if args.use_scaler:
+        use_amp = True
+        scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    else:
+        use_amp = False
+        scaler = None
 
     print('Creating model')
     model = Model(
