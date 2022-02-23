@@ -189,8 +189,8 @@ class HalcyonModelS2S(BaseModelS2S):
     def build_decoder(self):
         embedding = nn.Embedding(S2S_OUTPUT_CLASSES, 16)
         rnn = nn.LSTM(16, 96, num_layers = 5, bidirectional = False)
-        attention = LuongAttention('dot', 96, monotonic= True, monotonic_mode = 'parallel')
-        out_linear = nn.Linear(128, S2S_OUTPUT_CLASSES)
+        attention = LuongAttention('dot', 96, monotonic= True)
+        out_linear = nn.LazyLinear(S2S_OUTPUT_CLASSES)
 
         decoder = RNNDecoderS2S(
             embedding = embedding, 
