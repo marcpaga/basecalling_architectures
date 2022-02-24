@@ -58,16 +58,17 @@ if __name__ == '__main__':
     parser.add_argument("--decoder-type", type=str, choices=['shallow', 'deep'], help='Type of decoder')
     parser.add_argument("--attention-type", type=str, choices=['None', 'general', 'dot', 'concat'])
     parser.add_argument("--attention-pos", type=str, choices=['upstream', 'downstream'], help='Attention application relative to decoder')
-    parser.add_argument("--monotonic", action="store_true", help='If uses monotonic attention')
-    parser.add_argument("--window-size", type=int, choices=[400, 2000, 4000], help='Window size for the data')
+    parser.add_argument("--monotonic", type=bool, help='If uses monotonic attention')
+    parser.add_argument("--window-size", type=int, choices=[400, 1000, 2000, 4000], help='Window size for the data')
     parser.add_argument("--task", type=str, choices=['human', 'global', 'inter'])
     parser.add_argument("--batch-size", type=int, default = 64)
+    parser.add_argument("--num-epochs", type=int, default = 5)
     parser.add_argument("--scheduled-sampling", type=float, default = 0.75)
     parser.add_argument("--use-scaler", action='store_true', help='use 16bit float precision')
     parser.add_argument("--overwrite", action='store_true', help='delete existing files in folder')
     args = parser.parse_args()
     
-    num_epochs = 5
+    num_epochs = args.num_epochs
     validate_every = 500
     checkpoint_every = 20000
 
