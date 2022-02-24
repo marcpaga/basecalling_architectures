@@ -70,9 +70,7 @@ class RNNDecoderS2S(nn.Module):
         self.attention_pos = attention_pos
 
         if self.attention is not None:
-                self.concat = nn.LazyLinear(self.rnn.input_size)
-        else:
-            raise ValueError('attention pos has to be "upstream" or "downstream", given: ' + str(self.attention_pos))
+            self.concat = nn.LazyLinear(self.rnn.input_size)
                 
         if self.rnn.bidirectional:
             raise AttributeError('RNN cannot be bidirectional')
