@@ -3,7 +3,6 @@ from seq2seq.model import Seq2Seq
 import os 
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src')))
-from layers.halcyon import HalcyonLSTM
 
 class S2SGridAnalysisModel(Seq2Seq):
 
@@ -46,13 +45,6 @@ class S2SGridAnalysisModel(Seq2Seq):
             num_layers = encoder_num_layers, 
             bidirectional = True,
         )
-        self.encoder = HalcyonLSTM(
-            input_size = 243, 
-            hidden_size = 128, 
-            num_layers = 5, 
-            bidirectional = True,
-            proj_size = 96,
-        )
         self.decoder = Seq2Seq.build_decoder(
             self,
             embedding_dim = 16, 
@@ -61,13 +53,4 @@ class S2SGridAnalysisModel(Seq2Seq):
             attention_type = attention_type, 
             attention_pos = attention_pos,
             monotonic = monotonic
-        )
-        self.decoder = Seq2Seq.build_decoder(
-            self,
-            embedding_dim = 16, 
-            rnn_size = 96, 
-            rnn_num_layers = 5, 
-            attention_type = 'dot', 
-            attention_pos = 'downstream',
-            monotonic = True
         )
