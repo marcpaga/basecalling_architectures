@@ -66,9 +66,10 @@ if __name__ == '__main__':
     parser.add_argument("--batch-size", type=int, default = 64)
     parser.add_argument("--use-scaler", action='store_true', help='use 16bit float precision')
     parser.add_argument("--overwrite", action='store_true', help='delete existing files in folder')
+    parser.add_argument("--checkpoint", type=str, help='checkpoint file to resume training')
     args = parser.parse_args()
     
-    num_epochs = 5
+    num_epochs = 2
     validate_every = 500
     checkpoint_every = 20000
 
@@ -157,6 +158,10 @@ if __name__ == '__main__':
     model.schedulers = schedulers
     model.clipping_value = clipping_value
     model.use_sam = use_sam
+
+    if args.checkpoint is not None:
+        model.load(args.checkpoint, initialize_lazy = True)
+        model.to(device)
 
     print('Creating outputs')
     # output stuff

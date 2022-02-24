@@ -71,8 +71,8 @@ if __name__ == "__main__":
     )
     model = model.to(device)
 
-    state_dict = torch.load(checkpoint_file)
-    model.load_state_dict(state_dict['model_state'])
+    model = model.to(device)
+    model.load(checkpoint_file)
     model = model.to(device)
 
     basecaller = BasecallerImpl(

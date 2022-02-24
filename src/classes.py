@@ -53,6 +53,7 @@ class BaseModel(nn.Module):
         
         self.init_weights()
         self.stride = self.get_stride()
+        self.dummy_batch = None
         
     @abstractmethod
     def forward(self, batch):
@@ -229,9 +230,32 @@ class BaseModel(nn.Module):
             save_dict[k + '_state'] = v.state_dict()
         torch.save(save_dict, checkpoint_file)
     
-    def load(self, checkpoint_file):
-        """TODO"""
-        raise NotImplementedError()
+    def load(self, checkpoint_file, initialize_lazy = True):
+        """Load a model state from a checkpoint file
+
+        Args:
+            checkpoint_file (str): file were checkpoints are saved
+            initialize_lazy (bool): to do a forward step before loading model,
+                this solves the problem for layers that are initialized lazyly
+        """
+
+        if initialize_lazy:
+            if self.dummy_batch is None:
+                dummy_batch = {'x': torch.randn([16, 1000], device = self.device)}
+            else:
+                dummy_batch = self.dummy_batch
+            self.predict_step(dummy_batch)
+
+        checkpoints = torch.load(checkpoint_file)
+        self.load_state_dict(checkpoints['model_state'])
+
+        if self.optimizer is not None:
+            self.optimizer.load_state_dict(checkpoints['optimizer_state'])
+        if self.scaler is not None:
+            self.optimizer.load_state_dict(checkpoints['scaler'])
+        if 'lr_scheduler' in list(self.schedulers.keys()):
+            self.schedulers['lr_scheduler'].load_state_dict(checkpoints['lr_scheduler_state'])
+
         
     def get_stride(self):
         """Gives the total stride of the model
