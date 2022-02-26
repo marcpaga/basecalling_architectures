@@ -8,10 +8,9 @@ import random
 from pathlib import Path
 from fast_ctc_decode import beam_search, viterbi_search, crf_greedy_search, crf_beam_search
 import uuid
-import multiprocessing as mp
 from tqdm import tqdm
 
-from utils import read_metadata, stitch_by_stride
+from utils import read_metadata, time_limit, TimeoutException
 from read import read_fast5
 from normalization import normalize_signal_from_read_data, med_mad
 from constants import CTC_BLANK, BASES_CRF, S2S_PAD, S2S_EOS, S2S_SOS, S2S_OUTPUT_CLASSES
@@ -1589,46 +1588,53 @@ class BasecallerSeq2Seq(BaseBasecaller):
     def basecall(self, verbose = True, qscale = 1.0, qbias = 1.0):
 
         for batch in tqdm(self.dataset, disable = not verbose):
+            try:
+                with time_limit(seconds = 15):
+                    ids = batch['id'].squeeze(0)
+                    ids_arr = np.zeros((ids.shape[0], ), dtype = 'U36')
+                    for i in range(ids.shape[0]):
+                        ids_arr[i] = str(uuid.UUID(fields=ids[i].tolist()))
 
-            ids = batch['id'].squeeze(0)
-            ids_arr = np.zeros((ids.shape[0], ), dtype = 'U36')
-            for i in range(ids.shape[0]):
-                ids_arr[i] = str(uuid.UUID(fields=ids[i].tolist()))
+                    assert len(np.unique(ids_arr)) == 1
+                    read_id = str(np.unique(ids_arr)[0])
+                    
+                    x = batch['x'].squeeze(0)
+                    l = x.shape[0]
+                    ss = torch.arange(0, l, self.batch_size)
+                    nn = ss + self.batch_size
 
-            assert len(np.unique(ids_arr)) == 1
-            read_id = str(np.unique(ids_arr)[0])
-            
-            x = batch['x'].squeeze(0)
-            l = x.shape[0]
-            ss = torch.arange(0, l, self.batch_size)
-            nn = ss + self.batch_size
+                    predictions = list()
+                    for s, n in zip(ss, nn):
+                        predictions.append(self.model.predict_step({'x':x[s:n, :]}))
+                    all_predictions = torch.cat(predictions, dim = 1).cpu()
+                    # calculate qscores as integers
+                    qscores = (torch.round(-10*(torch.log10(1 - all_predictions.exp().max(-1).values)) * qscale + qbias) + 33).permute(1, 0).numpy().astype(int)
 
-            predictions = list()
-            for s, n in zip(ss, nn):
-                predictions.append(self.model.predict_step({'x':x[s:n, :]}))
-            all_predictions = torch.cat(predictions, dim = 1).cpu()
-            # calculate qscores as integers
-            qscores = (torch.round(-10*(torch.log10(1 - all_predictions.exp().max(-1).values)) * qscale + qbias) + 33).permute(1, 0).numpy().astype(int)
+                    preds = self.model.decode(all_predictions, decoding_dict = RECURRENT_DECODING_DICT, greedy = True)
 
-            preds = self.model.decode(all_predictions, decoding_dict = RECURRENT_DECODING_DICT, greedy = True)
+                    # translate qscores to ascii characters
+                    qscores_list = list()
+                    for p, qscore in zip(preds, qscores):
+                        qscore_str = ""
+                        for q in qscore:
+                            # padding qscores are negative
+                            if q < 0:
+                                continue
+                            qscore_str += chr(q).encode('ascii').decode("ascii") 
+                        # cut qscores for predictions after stop token
+                        qscores_list.append(qscore_str[:len(p)])
 
-            # translate qscores to ascii characters
-            qscores_list = list()
-            for p, qscore in zip(preds, qscores):
-                qscore_str = ""
-                for q in qscore:
-                    # padding qscores are negative
-                    if q < 0:
-                        continue
-                    qscore_str += chr(q).encode('ascii').decode("ascii") 
-                # cut qscores for predictions after stop token
-                qscores_list.append(qscore_str[:len(p)])
-
-            pred_seq, pred_phredq = self.stich_by_alignment(preds, qscores_list, self.chunksize, self.overlap)
+                    pred_seq, pred_phredq = self.stich_by_alignment(preds, qscores_list, self.chunksize, self.overlap)
+                    direction = '+'
+            except TimeoutException:
+                pred_seq = ''
+                pred_phredq = ''
+                direction = 'timeout'
+                
             assert len(pred_seq) == len(pred_phredq)
             fastq_string = '@'+str(read_id)+'\n'
             fastq_string += pred_seq + '\n'
-            fastq_string += '+\n'
+            fastq_string += direction + "\n"
             fastq_string += pred_phredq + '\n'
 
             with open(self.output_file, 'a') as f:

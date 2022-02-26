@@ -2,38 +2,8 @@
 """
 import zipfile
 import numpy as np
-import torch
-
-def stich_segments():
-    """Stiches different predicted segments together
-    """
-    raise NotImplementedError('TODO')
-    
-def decode_batch_greedy_ctc(y, decode_dict, blank_label = 0):
-    """Decodes a batch of CTC predictions in a greedy manner
-    by merging consequent labels together and removing blanks.
-    
-    Args:
-        y (tensor): tensor with shape [batch, len]
-        decode_dict (dict): dict with integer to string mapping
-        blank_label (int): integer that denotes blank label
-    """
-    
-    decoded_predictions = list()
-    for i in range(y.shape[0]):
-        seq = ''
-        prev_s = blank_label
-        for s in y[i]:
-            s = int(s)
-            if s == blank_label:
-                prev_s = blank_label
-            elif s != prev_s:
-                prev_s = s
-                seq += decode_dict[s]
-            elif s == prev_s:
-                continue
-        decoded_predictions.append(seq)
-    return decoded_predictions
+import signal
+from contextlib import contextmanager
 
 def read_metadata(file_name):
     """Read the metadata of a npz file
@@ -92,42 +62,29 @@ def find_runs(x):
 
         return run_values, run_starts, run_lengths
 
-def stitch_by_stride(chunks, chunksize, overlap, length, stride, reverse=False):
-        """
-        Stitch chunks together with a given overlap
-        
-        This works by calculating what the overlap should be between two outputed
-        chunks from the network based on the stride and overlap of the inital chunks.
-        The overlap section is divided in half and the outer parts of the overlap
-        are discarded and the chunks are concatenated. There is no alignment.
-        
-        Chunk1: AAAAAAAAAAAAAABBBBBCCCCC
-        Chunk2:               DDDDDEEEEEFFFFFFFFFFFFFF
-        Result: AAAAAAAAAAAAAABBBBBEEEEEFFFFFFFFFFFFFF
-        
-        Args:
-            chunks (tensor): predictions with shape [samples, length, classes]
-            chunk_size (int): initial size of the chunks
-            overlap (int): initial overlap of the chunks
-            length (int): original length of the signal
-            stride (int): stride of the model
-            reverse (bool): if the chunks are in reverse order
-            
-        Copied from https://github.com/nanoporetech/bonito
-        """
-        if chunks.shape[0] == 1: return chunks.squeeze(0)
 
-        semi_overlap = overlap // 2
-        start, end = semi_overlap // stride, (chunksize - semi_overlap) // stride
-        stub = (length - overlap) % (chunksize - overlap)
-        first_chunk_end = (stub + semi_overlap) // stride if (stub > 0) else end
 
-        if reverse:
-            chunks = list(chunks)
-            return torch.cat([
-                chunks[-1][:-start], *(x[-end:-start] for x in reversed(chunks[1:-1])), chunks[0][-first_chunk_end:]
-            ])
-        else:
-            return torch.cat([
-                chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
-            ])
+class TimeoutException(Exception): pass
+
+@contextmanager
+def time_limit(seconds):
+    """Raise a TimeoutException if a function runs for too long
+
+    Args:
+        seconds (int): amount of max time the function can be run
+
+    Example:
+    try:
+        with time_limit(10):
+            my_func()
+    except TimeoutException:
+        do_something()
+    """
+    def signal_handler(signum, frame):
+        raise TimeoutException("Timed out!")
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
