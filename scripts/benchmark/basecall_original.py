@@ -19,6 +19,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str)
     parser.add_argument("--model-dir", type=str, help='where all the models are saved')
+    parser.add_argument("--checkpoint", type=str, help='checkpoint file to load model weights', default = None)
     parser.add_argument("--output-file", type=str, help='output fastq file', default = None)
     parser.add_argument("--task", type=str)
     parser.add_argument("--window-overlap", type=int)
@@ -40,15 +41,21 @@ if __name__ == "__main__":
         output_file = args.output_file
 
     # load model
-    log = pd.read_csv(os.path.join(args.model_dir, args.task, model_folder_name, 'train.log'))
-    log = log[log['checkpoint'] == 'yes']
-    best_step = log['step'].iloc[np.argmax(log['metric.accuracy.val'])]
-    checkpoint_file = os.path.join(args.model_dir, args.task, model_folder_name, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
+    if args.checkpoint is not None:
+        checkpoint_file = args.checkpoint
+    else:
+        log = pd.read_csv(os.path.join(args.model_dir, args.task, model_folder_name, 'train.log'))
+        log = log[log['checkpoint'] == 'yes']
+        best_step = log['step'].iloc[np.argmax(log['metric.accuracy.val'])]
+        checkpoint_file = os.path.join(args.model_dir, args.task, model_folder_name, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
 
     use_amp = False
     scaler = None
 
-    if args.model == 'bonito':
+    if args.model == 'halcyon':
+        from halcyon.model import HalcyonModelS2S as Model# pyright: reportMissingImports=false
+        args.model_stride = 1
+    elif args.model == 'bonito':
         from bonito.model import BonitoModel as Model# pyright: reportMissingImports=false
     elif args.model == 'catcaller':
         from catcaller.model import CATCallerModel as Model# pyright: reportMissingImports=false
@@ -72,7 +79,7 @@ if __name__ == "__main__":
     model = model.to(device)
 
     model = model.to(device)
-    model.load(checkpoint_file)
+    model.load(checkpoint_file, initialize_lazy = True)
     model = model.to(device)
 
     basecaller = BasecallerImpl(

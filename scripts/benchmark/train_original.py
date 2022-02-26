@@ -64,6 +64,8 @@ if __name__ == '__main__':
     parser.add_argument("--window-size", type=int, choices=[400, 1000, 2000, 4000], help='Window size for the data')
     parser.add_argument("--task", type=str, choices=['human', 'global', 'inter'])
     parser.add_argument("--batch-size", type=int, default = 64)
+    parser.add_argument("--starting-lr", type=float, default = 0.001)
+    parser.add_argument("--warmup-steps", type=int, default = 5000)
     parser.add_argument("--use-scaler", action='store_true', help='use 16bit float precision')
     parser.add_argument("--overwrite", action='store_true', help='delete existing files in folder')
     parser.add_argument("--checkpoint", type=str, help='checkpoint file to resume training')
@@ -80,12 +82,10 @@ if __name__ == '__main__':
         decoding_dict = RECURRENT_DECODING_DICT
         encoding_dict = RECURRENT_ENCODING_DICT
         s2s = True
-        warmup_steps = 1
     else:
         decoding_dict = NON_RECURRENT_DECODING_DICT
         encoding_dict = NON_RECURRENT_ENCODING_DICT
         s2s = False
-        warmup_steps = 5000
         if args.model == 'bonito':
             from bonito.model import BonitoModel as Model# pyright: reportMissingImports=false
         elif args.model == 'catcaller':
@@ -144,10 +144,10 @@ if __name__ == '__main__':
 
     print('Creating optimization')
     ##    OPTIMIZATION     #############################################
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.starting_lr)
     total_steps =  (len(dataset.train_idxs)*num_epochs)/args.batch_size
     cosine_lr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,total_steps, eta_min=0.00001, last_epoch=-1, verbose=False)
-    lr_scheduler = GradualWarmupScheduler(optimizer, multiplier = 1.0, total_epoch = warmup_steps, after_scheduler=cosine_lr)
+    lr_scheduler = GradualWarmupScheduler(optimizer, multiplier = 1.0, total_epoch = args.warmup_steps, after_scheduler=cosine_lr)
     schedulers = {'lr_scheduler': lr_scheduler}
     clipping_value = 2
     use_sam = False
