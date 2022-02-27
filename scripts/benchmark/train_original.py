@@ -63,6 +63,7 @@ if __name__ == '__main__':
     ], help='Model')
     parser.add_argument("--window-size", type=int, choices=[400, 1000, 2000, 4000], help='Window size for the data')
     parser.add_argument("--task", type=str, choices=['human', 'global', 'inter'])
+    parser.add_argument("--num-epochs", type=int, default = 5)
     parser.add_argument("--batch-size", type=int, default = 64)
     parser.add_argument("--starting-lr", type=float, default = 0.001)
     parser.add_argument("--warmup-steps", type=int, default = 5000)
@@ -71,7 +72,6 @@ if __name__ == '__main__':
     parser.add_argument("--checkpoint", type=str, help='checkpoint file to resume training')
     args = parser.parse_args()
     
-    num_epochs = 2
     validate_every = 500
     checkpoint_every = 20000
 
@@ -145,7 +145,7 @@ if __name__ == '__main__':
     print('Creating optimization')
     ##    OPTIMIZATION     #############################################
     optimizer = torch.optim.Adam(model.parameters(), lr=args.starting_lr)
-    total_steps =  (len(dataset.train_idxs)*num_epochs)/args.batch_size
+    total_steps =  (len(dataset.train_idxs)*args.num_epochs)/args.batch_size
     cosine_lr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,total_steps, eta_min=0.00001, last_epoch=-1, verbose=False)
     lr_scheduler = GradualWarmupScheduler(optimizer, multiplier = 1.0, total_epoch = args.warmup_steps, after_scheduler=cosine_lr)
     schedulers = {'lr_scheduler': lr_scheduler}
@@ -195,7 +195,7 @@ if __name__ == '__main__':
     
     print('Training')
     total_num_steps = 1
-    for epoch_num in range(num_epochs):
+    for epoch_num in range(args.num_epochs):
         
         loader_train = model.dataloader_train
         loader_validation = model.dataloader_validation
