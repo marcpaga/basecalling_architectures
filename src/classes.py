@@ -627,7 +627,9 @@ class BaseModelS2S(BaseModel):
         self.token_pad = token_pad
         self.out_classes = out_classes
 
-        self.criterions['ce'] = nn.NLLLoss()
+        class_weights = torch.ones((out_classes,), device = self.device)
+        class_weights[self.token_eos] = 3 # add weight to eos token, it is critical that we stop predicting
+        self.criterions['ce'] = nn.NLLLoss(weight=class_weights)
         self.scheduled_sampling = scheduled_sampling
         self.max_len = max_len
         self.decoder_type = 'seq2seq'
@@ -792,18 +794,30 @@ class BaseModelS2S(BaseModel):
         p = p.permute(1, 0, 2) # [batch, len, channels]
         p = p.argmax(-1) # get most probable 
         p = p.cpu().numpy()
-        p = p.astype(str)
+    
+        decoded_sequences = list()
+        for sample in p:
+            seq = ''
+            has_stop_codon = False
+            for base in sample:
+                if base == self.token_sos or base == self.token_pad:
+                    continue
+                if base == self.token_eos:
+                    has_stop_codon = True
+                    break
+                seq += decoding_dict[base]
+            
+            if not has_stop_codon:
+                last_base = seq[-1]
+                seq = np.array(list(seq))
+                pos = np.where(seq != last_base)[0]
+                if len(pos) == 0:
+                    seq = seq[:6]
+                else:
+                    seq = seq[:pos[-1] + 2]
+                seq = "".join(seq.tolist())
 
-        # replace tokens with nothing
-        for k in [self.token_sos, self.token_eos, self.token_pad]:
-            p[p == str(k)] = ''
-        
-        # replace predictions with bases
-        for k, v in decoding_dict.items():
-            p[p == str(k)] = v
-
-        # join everything
-        decoded_sequences = ["".join(i) for i in p.tolist()]
+            decoded_sequences.append(seq)
 
         return decoded_sequences
 
