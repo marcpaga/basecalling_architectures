@@ -808,14 +808,15 @@ class BaseModelS2S(BaseModel):
                 seq += decoding_dict[base]
             
             if not has_stop_codon:
-                last_base = seq[-1]
-                seq = np.array(list(seq))
-                pos = np.where(seq != last_base)[0]
-                if len(pos) == 0:
-                    seq = seq[:6]
-                else:
-                    seq = seq[:pos[-1] + 2]
-                seq = "".join(seq.tolist())
+                if len(seq) > 0:
+                    last_base = seq[-1]
+                    seq = np.array(list(seq))
+                    pos = np.where(seq != last_base)[0]
+                    if len(pos) == 0:
+                        seq = seq[:6]
+                    else:
+                        seq = seq[:pos[-1] + 2]
+                    seq = "".join(seq.tolist())
 
             decoded_sequences.append(seq)
 
@@ -1367,6 +1368,8 @@ class BaseBasecaller():
         consensus = list()
         phredq_consensus = list()
         unmasked_fraction = round(chunk_overlap/chunk_size, 1)
+        min_length_align = int(chunk_overlap*unmasked_fraction/20)
+        difficult_alignments = 0
 
         for i in range(len(preds)-1):
 
@@ -1381,6 +1384,13 @@ class BaseBasecaller():
             cut_que = que[:int(len(que)*unmasked_fraction)]
             cut_ref_phredq = ref_phredq[-left:]
             cut_que_phredq = que_phredq[:int(len(que)*unmasked_fraction)]
+
+            if len(cut_ref) <=  min_length_align or len(cut_que) <= min_length_align:
+                pre_st = 0
+                consensus.append(ref)
+                phredq_consensus.append(ref_phredq)
+                difficult_alignments += 1
+                continue
 
             alignment = STICH_ALIGN_FUNCTION(cut_que, cut_ref, open = STICH_GAP_OPEN_PENALTY, extend = STICH_GAP_EXTEND_PENALTY, matrix = MATRIX)
 
@@ -1412,7 +1422,12 @@ class BaseBasecaller():
             consensus.append(consensus_seq)
             phredq_consensus.append(consensus_phredq)
 
-        return "".join(consensus), "".join(phredq_consensus)
+        if difficult_alignments > 0:
+            direction = 'difficult_' + str(difficult_alignments)
+        else:
+            direction = '+'
+
+        return "".join(consensus), "".join(phredq_consensus), direction 
 
 class BasecallerCTC(BaseBasecaller):
     """A base Basecaller class that is used to basecall complete reads
@@ -1638,8 +1653,7 @@ class BasecallerSeq2Seq(BaseBasecaller):
                         # cut qscores for predictions after stop token
                         qscores_list.append(qscore_str[:len(p)])
 
-                    pred_seq, pred_phredq = self.stich_by_alignment(preds, qscores_list, self.chunksize, self.overlap)
-                    direction = '+'
+                    pred_seq, pred_phredq, direction = self.stich_by_alignment(preds, qscores_list, self.chunksize, self.overlap)
             except TimeoutException:
                 pred_seq = ''
                 pred_phredq = ''
