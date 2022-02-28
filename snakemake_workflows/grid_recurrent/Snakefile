@@ -31,7 +31,7 @@ rule all:
             dec = config['decoder_type'],
             at  = config['attention_type'],
             ap  = config['attention_pos'],
-            mo = flag_to_str(config['monotonic']),
+            mo  = config['monotonic'],
             win = config['window_size'],
             task = config['task'],
         )
@@ -158,8 +158,7 @@ rule basecall:
 
 rule train:
     input:
-        data_dir=ancient(os.path.join(config['data_dir'], '{task}', '{win}.0')),
-        output_dir=config['model_dir']
+        data_dir=ancient(os.path.join(config['data_dir'], '{task}', '{win}.0'))
 
     output:
         training_done=touch(os.path.join(
@@ -175,12 +174,18 @@ rule train:
         decoder_type = lambda wildcards: wildcards.dec,
         attention_type = lambda wildcards: wildcards.at,
         attention_pos = lambda wildcards: wildcards.ap,
-        monotonic = lambda wildcards: bool_to_flag(wildcards.mo, '--monotonic'),
+        monotonic = lambda wildcards: wildcards.mo,
         window_size = lambda wildcards: wildcards.win,
         task = lambda wildcards: wildcards.task,
         batch_size = config["batch_size"],
+        num_epochs = config["num_epochs"],
         use_scaler = config["use_scaler"],
-        overwrite = config['overwrite']
+        overwrite = config['overwrite'],
+        output_dir = os.path.join(
+            config['model_dir'], 
+            '{task}', 
+            '{cnn}_{enc}_{dec}_{at}_{ap}_{mo}_{win}',
+        )
     
     resources:
         job_name = lambda wildcards: 'train_' + get_model_name_folder(wildcards.cnn, wildcards.enc, wildcards.dec, wildcards.at, wildcards.ap, wildcards.mo, wildcards.win),
@@ -199,16 +204,16 @@ rule train:
         ' && echo $CONDA_PREFIX; ' 
         ' export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64; '
         ' python /hpc/compgen/users/mpages/babe/scripts/benchmark/train_grid_recurrent.py '\
-        ' --output-dir {input.output_dir} '\
         ' --data-dir {input.data_dir} '\
+        ' --output-dir {params.output_dir} '\
         ' --cnn-type {params.cnn_type} '\
         ' --encoder-type {params.encoder_type} '\
         ' --decoder-type {params.decoder_type} '\
         ' --attention-type {params.attention_type} '\
         ' --attention-pos {params.attention_pos} '\
+        ' --monotonic {params.monotonic} '\
         ' --window-size {params.window_size} '\
         ' --batch-size {params.batch_size} '\
-        ' --task {params.task} '\
-        ' {params.monotonic} '\
+        ' --num-epochs {params.num_epochs} '\
         ' {params.overwrite} '\
         ' {params.use_scaler}; '

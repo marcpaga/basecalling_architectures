@@ -60,7 +60,6 @@ if __name__ == '__main__':
     parser.add_argument("--attention-pos", type=str, choices=['upstream', 'downstream'], help='Attention application relative to decoder')
     parser.add_argument("--monotonic", type=bool, help='If uses monotonic attention')
     parser.add_argument("--window-size", type=int, choices=[400, 1000, 2000, 4000], help='Window size for the data')
-    parser.add_argument("--task", type=str, choices=['human', 'global', 'inter'])
     parser.add_argument("--batch-size", type=int, default = 64)
     parser.add_argument("--num-epochs", type=int, default = 5)
     parser.add_argument("--scheduled-sampling", type=float, default = 0.75)
@@ -144,17 +143,10 @@ if __name__ == '__main__':
     model.clipping_value = clipping_value
     model.use_sam = False
 
-    # output stuff
-    output_dir = os.path.join(args.output_dir, args.task)
-    output_dir += '/'
-    config = [args.cnn_type, args.encoder_type, args.decoder_type, args.attention_type, args.attention_pos, args.monotonic, args.window_size]
-    for i, c in enumerate(config):
-        if i > 0:
-            output_dir += '_'
-        output_dir += str(c)
 
+    output_dir = args.output_dir
     checkpoints_dir = os.path.join(output_dir, 'checkpoints')
-
+    
     # check output dir
     # check output dir
     if not os.path.isdir(output_dir):
@@ -170,6 +162,7 @@ if __name__ == '__main__':
                 raise FileExistsError('Output dir contains files')
             else:
                 os.mkdir(checkpoints_dir)
+
     
     # keep track of losses and metrics to take the average
     train_results = dict()
