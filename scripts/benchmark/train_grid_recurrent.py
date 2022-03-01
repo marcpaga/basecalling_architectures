@@ -65,6 +65,7 @@ if __name__ == '__main__':
     parser.add_argument("--scheduled-sampling", type=float, default = 0.75)
     parser.add_argument("--use-scaler", action='store_true', help='use 16bit float precision')
     parser.add_argument("--overwrite", action='store_true', help='delete existing files in folder')
+    parser.add_argument("--checkpoint", type=str, help='Checkpoint to load', default = None)
     args = parser.parse_args()
     
     num_epochs = args.num_epochs
@@ -126,6 +127,10 @@ if __name__ == '__main__':
         scheduled_sampling = args.scheduled_sampling,
     )
     model = model.to(device)
+
+    if args.checkpoint is not None:
+        model.load(args.checkpoint, initialize_lazy = True)
+        model.to(device)
 
     ##    OPTIMIZATION     #############################################
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
