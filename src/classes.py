@@ -1618,7 +1618,7 @@ class BasecallerSeq2Seq(BaseBasecaller):
 
         for batch in tqdm(self.dataset, disable = not verbose):
             try:
-                with time_limit(seconds = 15):
+                with time_limit(seconds = 30):
                     ids = batch['id'].squeeze(0)
                     ids_arr = np.zeros((ids.shape[0], ), dtype = 'U36')
                     for i in range(ids.shape[0]):
