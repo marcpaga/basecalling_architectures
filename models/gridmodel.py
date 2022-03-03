@@ -31,12 +31,17 @@ class GridAnalysisModel(
         self.encoder_type = encoder_type
         self.decoder_type = decoder_type
         self.use_connector = use_connector
+        self.use_convolution_connector = False
 
         self.cnn_stride = None
         self.convolution = self.build_cnn()
         self.encoder = self.build_encoder()
         if use_connector:
             self.connector = self.build_connector()
+            if self.cnn_stride == 1:
+                self.convolution_connector = self.build_convolution_connector()
+                self.use_convolution_connector = True
+                
         self.decoder = self.build_decoder()
         
 
@@ -45,6 +50,9 @@ class GridAnalysisModel(
         # [batch, channels, len]
         x = self.convolution(x)
 
+        if self.use_convolution_connector:
+            x = self.convolution_connector(x)
+
         # [batch, channels, len]
         if self.use_connector:
             x = x.permute(0, 2, 1)
@@ -52,6 +60,8 @@ class GridAnalysisModel(
             x = self.connector(x)
             x = x.permute(0, 2, 1)
             # [batch, channels, len]
+
+        
 
         x = x.permute(2, 0, 1) # [len, batch, channels]
         x = self.encoder(x)
@@ -155,6 +165,43 @@ class GridAnalysisModel(
             return nn.Sequential(nn.Linear(self.cnn_output_size, self.encoder_input_size), nn.SiLU())
         elif self.cnn_output_activation is None:
             return nn.Sequential(nn.Linear(self.cnn_output_size, self.encoder_input_size))
+
+    def build_convolution_connector(self):
+        self.cnn_stride = 5
+        if self.cnn_output_activation == 'relu':
+            return nn.Sequential(
+                nn.Conv1d(
+                    self.cnn_output_size, 
+                    self.cnn_output_size,
+                    kernel_size = 19,
+                    stride = 5,
+                    padding = 19//2,
+                ), 
+                nn.ReLU()
+            )
+        elif self.cnn_output_activation == 'silu':
+            return nn.Sequential(
+                nn.Conv1d(
+                    self.cnn_output_size, 
+                    self.cnn_output_size,
+                    kernel_size = 19,
+                    stride = 5,
+                    padding = 19//2,
+                ), 
+                nn.SiLU()
+            )
+        elif self.cnn_output_activation is None:
+            return nn.Sequential(
+                nn.Conv1d(
+                    self.cnn_output_size, 
+                    self.cnn_output_size,
+                    kernel_size = 19,
+                    stride = 5,
+                    padding = 19//2,
+                ), 
+            )
+        
+                
 
     def build_decoder(self):
         return BaseModelImpl.build_decoder(self, encoder_output_size = self.encoder_output_size, decoder_type = self.decoder_type)
