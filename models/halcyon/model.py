@@ -131,7 +131,7 @@ class HalcyonModelS2S(BaseModelS2S):
         encoder = None, 
         decoder = None, 
         load_default = False, 
-        scheduled_sampling = 0.75,
+        scheduled_sampling = 0.30,
         *args, **kwargs,
         ):
         super(HalcyonModelS2S, self).__init__(scheduled_sampling = scheduled_sampling, *args, **kwargs)
