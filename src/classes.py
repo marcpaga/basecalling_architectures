@@ -1351,7 +1351,77 @@ class BaseBasecaller():
                 chunks[0, :first_chunk_end], *chunks[1:-1, start:end], chunks[-1, start:]
             ])
 
-    def stich_by_alignment(self, preds, qscores_list, chunk_size, chunk_overlap):
+    def stich_by_alignment(self, preds, qscores_list, num_patch_bases = 10):
+
+        consensus = list()
+        phredq_consensus = list()
+        for i in range(0, len(preds) - 2, 2):
+            
+            if i == 0:
+                ref1 = preds[i]
+                ref1_phredq = qscores_list[i]
+
+            ref2 = preds[i+2]
+            ref2_phredq = qscores_list[i+2]
+            que = preds[i+1]
+            que_phredq = qscores_list[i+1]
+
+            alignment = STICH_ALIGN_FUNCTION(que, ref1+ref2, open = STICH_GAP_OPEN_PENALTY, extend = STICH_GAP_EXTEND_PENALTY, matrix = MATRIX)
+
+            decoded_cigar = alignment.cigar.decode.decode()
+            long_cigar, _, _ = elongate_cigar(decoded_cigar)
+            align_arr = make_align_arr(long_cigar, ref1+ref2, que, phredq = que_phredq, phredq_ref = ref1_phredq+ref2_phredq)
+
+
+            n_gaps = 0
+            st_first_segment = len(ref1) - num_patch_bases
+            while True:
+                n_gaps_new = np.sum(align_arr[0][:st_first_segment] == '-')
+                if n_gaps_new > n_gaps:
+                    st_first_segment += n_gaps_new
+                    n_gaps = n_gaps_new
+                else:
+                    break
+
+            n_gaps = 0
+            nd_first_segment = st_first_segment + num_patch_bases
+            while True:
+                n_gaps_new = np.sum(align_arr[0][st_first_segment:nd_first_segment] == '-')
+                if n_gaps_new > n_gaps:
+                    nd_first_segment += n_gaps_new
+                    n_gaps = n_gaps_new
+                else:
+                    break
+
+            st_second_segment = nd_first_segment
+            nd_second_segment = st_second_segment + num_patch_bases
+
+            n_gaps = 0
+            while True:
+                n_gaps_new = np.sum(align_arr[0][st_second_segment:nd_second_segment] == '-')
+                if n_gaps_new > n_gaps:
+                    nd_second_segment += n_gaps_new
+                    n_gaps = n_gaps_new
+                else:
+                    break
+
+            segment1_patch = "".join(align_arr[2][st_first_segment:nd_first_segment].tolist()).replace('-', '')
+            segment2_patch = "".join(align_arr[2][st_second_segment:nd_second_segment].tolist()).replace('-', '')
+            segment1_patch_phredq = "".join(align_arr[3][st_first_segment:nd_first_segment].tolist()).replace(' ', '')
+            segment2_patch_phredq = "".join(align_arr[3][st_second_segment:nd_second_segment].tolist()).replace(' ', '')
+
+            new_ref1 = ref1[:-num_patch_bases] + segment1_patch
+            new_ref1_phredq = ref1_phredq[:-num_patch_bases] + segment1_patch_phredq
+            ref1 = segment2_patch + ref2[num_patch_bases:] 
+            ref1_phredq = segment2_patch_phredq + ref2_phredq[num_patch_bases:] 
+            assert len(new_ref1) == len(new_ref1_phredq)
+
+            consensus.append(new_ref1)
+            phredq_consensus.append(new_ref1_phredq)
+
+        return "".join(consensus), "".join(phredq_consensus), '+'  
+
+    def stich_by_alignment2(self, preds, qscores_list, chunk_size, chunk_overlap):
         """Stich basecalled sequences via alignment
 
         Works the same as stich_by_stride, but instead on overlaping the windows
@@ -1653,7 +1723,7 @@ class BasecallerSeq2Seq(BaseBasecaller):
                         # cut qscores for predictions after stop token
                         qscores_list.append(qscore_str[:len(p)])
 
-                    pred_seq, pred_phredq, direction = self.stich_by_alignment(preds, qscores_list, self.chunksize, self.overlap)
+                    pred_seq, pred_phredq, direction = self.stich_by_alignment(preds, qscores_list)
             except TimeoutException:
                 pred_seq = ''
                 pred_phredq = ''
