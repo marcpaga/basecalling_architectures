@@ -1723,7 +1723,12 @@ class BasecallerSeq2Seq(BaseBasecaller):
                         # cut qscores for predictions after stop token
                         qscores_list.append(qscore_str[:len(p)])
 
-                    pred_seq, pred_phredq, direction = self.stich_by_alignment(preds, qscores_list)
+                    if self.overlap > 0:
+                        pred_seq, pred_phredq, direction = self.stich_by_alignment(preds, qscores_list)
+                    else:
+                        pred_seq = "".join(preds)
+                        pred_phredq = "".join(qscores_list)
+                        direction = '+'
             except TimeoutException:
                 pred_seq = ''
                 pred_phredq = ''
