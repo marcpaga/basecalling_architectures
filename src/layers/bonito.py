@@ -92,7 +92,13 @@ class BonitoLinearCRFDecoder(nn.Module):
             T, N, C = scores.shape
             s = torch.tensor(self.blank_score, device=scores.device, dtype=scores.dtype)
             scores = torch.cat([s.expand(T, N, C//self.n_base, 1), scores.reshape(T, N, C//self.n_base, self.n_base)], 
-                               axis=-1).reshape(T, N, -1)
+                              axis=-1).reshape(T, N, -1)
+            # T, N, C = scores.shape
+            # scores = torch.nn.functional.pad(
+            #     scores.view(T, N, C // self.n_base, self.n_base),
+            #     (1, 0, 0, 0, 0, 0, 0, 0),
+            #     value=self.blank_score
+            # ).view(T, N, -1)
         return scores
     
 try:
