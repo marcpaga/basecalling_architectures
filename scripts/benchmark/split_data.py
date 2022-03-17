@@ -468,17 +468,15 @@ def inter_reads_split(main_dir, training_species, testing_species, num_training_
         test_reads += spe_te
 
     for test_spe in testing_species:
-        subdf = df[df['species'] == train_spe]
+        subdf = df[df['species'] == test_spe]
 
         read_files = sorted(subdf[0].tolist())
         random.seed(reads_seed)
         random.shuffle(read_files)
 
         if len(subdf) >= test_reads_per_spe:
-            spe_tr = []
             spe_te = read_files[:int(test_reads_per_spe)]
         else:
-            spe_tr = []
             spe_te = read_files
 
         print(test_spe)
@@ -488,11 +486,10 @@ def inter_reads_split(main_dir, training_species, testing_species, num_training_
         GLOBAL_LIST.append({
             'Task':'inter-species', 
             'Species':test_spe, 
-            'Train':len(spe_tr), 
+            'Train':0, 
             'Test':len(spe_te)
         })
 
-        train_reads += spe_tr
         test_reads += spe_te
 
 
