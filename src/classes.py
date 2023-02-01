@@ -1160,6 +1160,9 @@ class BaseFast5Dataset(Dataset):
         """Read a text file with the reads to be processed
         """
 
+        if isinstance(fast5_list, list):
+            return self.buffer_list(fast5_list, self.buffer_size)
+
         files_list = list()
         with open(fast5_list, 'r') as f:
             for line in f:

@@ -17,38 +17,40 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str)
-    parser.add_argument("--model-dir", type=str, help='where all the models are saved')
-    parser.add_argument("--checkpoint", type=str, help='checkpoint file to load model weights', default = None)
-    parser.add_argument("--output-file", type=str, help='output fastq file', default = None)
-    parser.add_argument("--task", type=str)
-    parser.add_argument("--window-overlap", type=int)
-    parser.add_argument("--file-list", type=str)
+    parser.add_argument("--model", type=str, choices=[
+        'bonito',
+        'catcaller',
+        'causalcall',
+        'mincall',
+        'sacall',
+        'urnano',
+        'halcyon',
+    ], required = True)
+    parser.add_argument("--fast5-dir", type=str, required = True)
+    parser.add_argument("--checkpoint", type=str, help='checkpoint file to load model weights', required = True)
+    parser.add_argument("--output-file", type=str, help='output fastq file', required = True)
+    parser.add_argument("--chunk-size", type=int, default = 2000)
+    parser.add_argument("--window-overlap", type=int, default = 200)
     parser.add_argument("--batch-size", type=int, default = 64)
-    parser.add_argument("--beam-size", type=int)
-    parser.add_argument("--beam-threshold", type=float)
+    parser.add_argument("--beam-size", type=int, default = 1)
+    parser.add_argument("--beam-threshold", type=float, default = 0.1)
     parser.add_argument("--model-stride", type=int, default = None)
-    parser.add_argument("--chunk-size", type=int)
+    
     args = parser.parse_args()
 
-    fast5_dataset = BaseFast5Dataset(fast5_list= args.file_list, buffer_size = 1)
 
-    model_folder_name = args.model+'_'+str(args.chunk_size)
+    file_list = list()
+    for f in os.listdir(args.fast5_dir):
+        if f.endswith('.fast5'):
+            file_list.append(os.path.join(args.fast5_dir, f))
 
-    if args.output_file is None:
-        output_file = os.path.join(args.model_dir, args.task, model_folder_name, 'basecalls_' + str(args.beam_size) + '_' + str(args.beam_threshold) + '.fastq')
-    else:
-        output_file = args.output_file
+    fast5_dataset = BaseFast5Dataset(fast5_list= file_list, buffer_size = 1)
+
+    output_file = args.output_file
 
     # load model
-    if args.checkpoint is not None:
-        checkpoint_file = args.checkpoint
-    else:
-        log = pd.read_csv(os.path.join(args.model_dir, args.task, model_folder_name, 'train.log'))
-        log = log[log['checkpoint'] == 'yes']
-        best_step = log['step'].iloc[np.argmax(log['metric.accuracy.val'])]
-        checkpoint_file = os.path.join(args.model_dir, args.task, model_folder_name, 'checkpoints', 'checkpoint_' + str(best_step) + '.pt')
-
+    checkpoint_file = args.checkpoint
+    
     use_amp = False
     scaler = None
 

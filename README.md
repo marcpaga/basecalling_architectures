@@ -110,4 +110,22 @@ For additional information on other parameters check `./scripts/benchmark/train_
 
 ## Model basecalling
 
+Once a model has been trained, it can be used for basecalling. Here's an example command with the demo data:
+
+```
+python ./scripts/basecall_original.py \
+--model bonito \
+--fast5-dir ./demo_data/fast5 \
+--checkpoint ./demo_data/properly_trained_bonito/bonito_checkpoint.pt \
+--output-file ./demo_data/demo_basecalls.fastq
+```
+
+For additional information on other parameters check `./scripts/benchmark/basecall_original.py --help` or `./scripts/benchmark/basecall_comb.py --help`
+
 ## Model evaluation
+
+For model evaluation refer to: https://github.com/marcpaga/nanopore_benchmark. There you will find information on how to evaluate the basecalls againts their reference sesquences.
+
+# Computational requirements
+
+A CUDA compatible GPU is required to train models and to use them for basecalling.
