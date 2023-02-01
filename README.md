@@ -33,6 +33,8 @@ pip install -r requirements.txt
 
 ## Data download
 
+This repository contains a very small demo dataset that can be used to check if the scripts are running correctly. The examples below use this demo data. Before downloading and processing the data, you might want to make sure that you can run all the examples without errors with the demo data.
+
 For public data downloads refer to: https://github.com/marcpaga/nanopore_benchmark.
 There you can find download links as well as train/test splits to benchmark your model with the same data as we did in our benchmark.
 
@@ -46,12 +48,12 @@ There's two main data processing steps:
 
 For this step we used Tombo, which models the expected average raw signal level and aligns the expected signal with the measured signal. See their [documentation](https://nanoporetech.github.io/tombo/resquiggle.html) for detailed info on how to use it.
 
-After installation of tombo, using the example data in this repository, you should be able to run the following:
+After installation of tombo (you have to install it in a different environment, as it is not compatible with the training environment), using the example data in this repository, you should be able to run the following:
 
 ```
 tombo \
 resquiggle demo_data/fast5 \
-demo_data/reference.fna \
+demo_data/Lambda_phage.fna \
 --processes 2 \
 --dna \
 --num-most-common-errors 5 \
@@ -65,13 +67,14 @@ In this step, we take the raw signal and splice it into segments of a fixed leng
 This can be done by running the following script:
 
 ```
-python ./scripts/nn/data_prepare_numpy.py \
---fast5-list  TODO \
+python ./scripts/data_prepare_numpy.py \
+--fast5-dir  ./demo_data/fast5 \
 --output-dir  ./demo_data/nn_input \
 --total-files  1 \
 --window-size 2000 \
 --window-slide 0 \
---n-cores 2
+--n-cores 2 \
+--verbose
 ```
 
 ## Model training
@@ -81,9 +84,9 @@ In this step we fed all the data we prepared (in numpy arrays), and train the mo
 We can train the models as original architectures:
 
 ```
-python ./scripts/benchmark/train_original.py \
+python ./scripts/train_original.py \
 --data-dir ./demo_data/nn_input \
---output-dir TODO \
+--output-dir ./demo_data/trained_model_original \
 --model causalcall \
 --window-size 2000 \
 --batch-size 64
@@ -92,18 +95,18 @@ python ./scripts/benchmark/train_original.py \
 Or mix architectures together with this other script:
 
 ```
-python ./scripts/benchmark/train_comb.py \
+python ./scripts/train_comb.py \
 --data-dir ./demo_data/nn_input \
---output-dir TODO \
+--output-dir ./demo_data/trained_model_comb \
 --cnn-type causalcall \
 --encoder-type bonitorev \
 --decoder-type crf \
+--use-connector \
 --window-size 2000 \
 --batch-size 64
 ```
 
 For additional information on other parameters check `./scripts/benchmark/train_original.py --help` or `./scripts/benchmark/train_comb.py --help`
-
 
 ## Model basecalling
 

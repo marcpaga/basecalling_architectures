@@ -3,3 +3,7 @@ plot_notebooks
 results
 snakemake_workflows
 sub
+venv3
+*.pyc
+demo_data/trained_model_comb
+demo_data/trained_model_original
