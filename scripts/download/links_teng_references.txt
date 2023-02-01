@@ -1,2 +1,0 @@
-https://data.genomicsresearch.org/Projects/train_set_all/S10/Reference/reference.fasta  Escherichia_coli-0
-https://data.genomicsresearch.org/Projects/train_set_all/Lambda_old/Reference/lambda.fasta  Lambda_phage-0
