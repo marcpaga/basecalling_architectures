@@ -20,6 +20,7 @@ We also have models where we mix the CNN-RNN/Transformer-CTC/CRF between models,
 
 # Installation
 
+This code has been tested on python 3.7 only.
 ```
 git clone https://github.com/marcpaga/basecalling_architectures.git 
 cd basecalling_architectures
@@ -28,6 +29,8 @@ source venv3/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
+If you get dependency conflicts, try to manually install `seqdist==0.0.3` and the manually upgrade to `numpy==1.21.5`, as was found as a solution in this [issue](https://github.com/marcpaga/basecalling_architectures/issues/4#issuecomment-1645361245).
+
 
 # Getting started
 
