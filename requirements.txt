@@ -1,4 +1,4 @@
-numpy
+numpy==1.21.5
 cupy-cuda102==9.4.0
 fast_ctc_decode==0.3.0
 h5py==3.7.0
