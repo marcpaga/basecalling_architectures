@@ -1274,7 +1274,7 @@ class BaseFast5Dataset(Dataset):
 
 class BaseBasecaller():
 
-    def __init__(self, dataset, model, batch_size, output_file, n_cores = 4, chunksize = 2000, overlap = 200, stride = None, beam_size = 1, beam_threshold = 0.1):
+    def __init__(self, dataset, model, batch_size, output_file, n_cores = 4, chunksize = 2000, overlap = 400, stride = None, beam_size = 1, beam_threshold = 0.1):
 
         assert isinstance(dataset, BaseFast5Dataset)
 
