@@ -1,7 +1,7 @@
 # Deep learning architectures for basecalling
 
 This repository contains the code and scripts to train nanopore basecalling neural networks from R9.4.1 flow cells data.
-The code here was used on our benchmark of the latest network architectures: https://www.biorxiv.org/content/10.1101/2022.05.17.492272v2.
+The code here was used on our benchmark of the latest network architectures: https://link.springer.com/article/10.1186/s13059-023-02903-2.
 In this work, we reimplemented the latest basecaller models in PyTorch.
 
 For information regarding the datasets, train/test splits and evaluation metrics please refer to: https://github.com/marcpaga/nanopore_benchmark
@@ -132,3 +132,10 @@ For model evaluation refer to: https://github.com/marcpaga/nanopore_benchmark. T
 # Computational requirements
 
 A CUDA compatible GPU is required to train models and to use them for basecalling.
+
+# Citation
+
+If you use this work please cite our paper:
+```
+Pagès-Gallego, M., de Ridder, J. Comprehensive benchmark and architectural analysis of deep learning models for nanopore sequencing basecalling. Genome Biol 24, 71 (2023). https://doi.org/10.1186/s13059-023-02903-2
+```
